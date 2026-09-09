@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KitchenFlow.Api/KitchenFlow.Api.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/KitchenFlow.Api.Tests/KitchenFlow.Api.Tests.csproj" />
+  </Folder>
+</Solution>
