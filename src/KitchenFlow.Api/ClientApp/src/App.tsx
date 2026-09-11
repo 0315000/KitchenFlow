@@ -18,7 +18,7 @@ function App() {
     <ul>
       {machines.map((machine) => (
         <li key={machine.id}>{machine.name}</li>
-      ))}
+      ))} 
     </ul>
   )
 }
