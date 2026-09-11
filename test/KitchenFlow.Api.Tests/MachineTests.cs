@@ -4,7 +4,7 @@ namespace KitchenFlow.Api.Tests;
 
 public class UnitTest1
 {
-    [Fact]
+    [Fact]  
     public void Machine_Name_Is_Set_Correctly()
     {
         var machine = new Machine { Id = 1, Name = "오븐" };

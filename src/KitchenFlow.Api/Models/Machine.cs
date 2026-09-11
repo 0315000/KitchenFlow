@@ -1,4 +1,4 @@
-namespace KitchenFlow.Api.Models
+namespace KitchenFlow.Api.Models  
 {
     public class Machine //Machine 이라는 클래스 정의 ,데이터 베이스의 테이블이됨
     {
