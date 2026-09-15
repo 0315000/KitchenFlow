@@ -11,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KitchenFlow.Api.Migrations
 {
     [DbContext(typeof(KitchenFlowDbContext))]
-    partial class KitchenFlowDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260915120000_AddMachineNameUniqueIndex")]
+    partial class AddMachineNameUniqueIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
