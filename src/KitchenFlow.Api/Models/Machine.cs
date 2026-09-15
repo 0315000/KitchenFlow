@@ -8,5 +8,6 @@ namespace KitchenFlow.Api.Models
         public int CapacityMl { get; set; }                   // 신규
         public int MinTempC { get; set; }                     // 신규
         public int MaxTempC { get; set; }                     // 신규
+        public bool IsAvailable { get; set; } = true;         // 신규: 고장/점검 중이면 false
     }
 }
