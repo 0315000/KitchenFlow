@@ -3,6 +3,7 @@ using System;
 using KitchenFlow.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KitchenFlow.Api.Migrations
 {
     [DbContext(typeof(KitchenFlowDbContext))]
-    partial class KitchenFlowDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260915081723_AddCookingTask")]
+    partial class AddCookingTask
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
