@@ -83,6 +83,7 @@ namespace KitchenFlow.Api.Controllers
             existing.Quantity = item.Quantity;
             existing.ExpiryDate = item.ExpiryDate;
             existing.Threshold = item.Threshold;
+            existing.Unit = item.Unit;
 
             await _context.SaveChangesAsync();
             return NoContent();
