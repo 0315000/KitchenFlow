@@ -290,6 +290,34 @@ public class InventoryItemsControllerTests
     }
 
     [Fact]
+    public async Task AdjustInventoryItem_InsufficientStock_ReturnsBadRequestAndLeavesQuantityUnchanged()
+    {
+        var connectionString = NewSharedMemoryConnectionString();
+        using var keepAlive = new SqliteConnection(connectionString);
+        keepAlive.Open();
+
+        using (var setup = new SqliteTestDb(connectionString))
+        {
+            setup.Context.Database.EnsureCreated();
+            setup.Context.InventoryItems.Add(new InventoryItem
+            {
+                ItemName = "소금", Quantity = 3, ExpiryDate = DateTime.Today.AddDays(10), Threshold = 1,
+            });
+            await setup.Context.SaveChangesAsync();
+        }
+
+        using var db = new SqliteTestDb(connectionString);
+        var controller = new InventoryItemsController(db.Context);
+        var result = await controller.AdjustInventoryItem(1, new AdjustInventoryRequest { Amount = -5 });
+
+        Assert.IsType<BadRequestObjectResult>(result);
+
+        using var verify = new SqliteTestDb(connectionString);
+        var item = await verify.Context.InventoryItems.FindAsync(1);
+        Assert.Equal(3, item!.Quantity);
+    }
+
+    [Fact]
     public async Task ConsumeInventoryItem_ConcurrentRequests_NeverGoesNegative()
     {
         // 몽키테스트/동시성 완료 조건 재현:

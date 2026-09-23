@@ -12,6 +12,7 @@ namespace KitchenFlow.Api.Data
 
         public DbSet<Machine> Machines => Set<Machine>();
         public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
+        public DbSet<CookingTask> CookingTasks => Set<CookingTask>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -27,6 +28,22 @@ namespace KitchenFlow.Api.Data
                 new Machine { Id = 2, Name = "믹서" },
                 new Machine { Id = 3, Name = "냉장고" }
             );
+
+            // CookingTask -> Machine (필수 참조). 기계가 삭제되면 그 기계를 쓰는 작업도
+            // 의미가 없어지므로 Restrict로 막아, 사용 중인 기계는 실수로 삭제되지 않게 한다.
+            modelBuilder.Entity<CookingTask>()
+                .HasOne<Machine>()
+                .WithMany()
+                .HasForeignKey(t => t.RequiredMachineId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // CookingTask -> CookingTask (선행 작업, 선택). 자기 자신을 참조하는 관계라서
+            // EF Core가 자동으로 못 찾고 명시적으로 지정해야 한다.
+            modelBuilder.Entity<CookingTask>()
+                .HasOne<CookingTask>()
+                .WithMany()
+                .HasForeignKey(t => t.PrecedenceTaskId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }
