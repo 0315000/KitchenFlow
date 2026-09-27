@@ -180,7 +180,7 @@ public class InventoryItemsControllerTests
 
     // [엣지케이스 표 2번] id 999처럼 존재하지 않는 재료를 Adjust로 조정하려고 함
     // → 내부 에러(500)로 터지지 않고, "해당 재료를 찾을 수 없습니다."(404)로 처리해야 한다.
-    [Fact]
+    [Fact]  
     public async Task AdjustInventoryItem_UnknownId_ReturnsNotFoundWithMessage()
     {
         using var context = CreateContext();
