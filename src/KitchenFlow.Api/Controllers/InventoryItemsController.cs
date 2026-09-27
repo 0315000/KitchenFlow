@@ -164,13 +164,19 @@ namespace KitchenFlow.Api.Controllers
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(i => i.Quantity, i => i.Quantity + request.Amount));
 
-            if (affectedRows == 0)
-            {
-                return BadRequest("이 조정을 적용하면 재고가 음수가 됩니다.");
-            }
+                if (affectedRows == 0)
+        {
+            return BadRequest("이 조정을 적용하면 재고가 음수가 됩니다.");
+        }
+
+        var newQuantity = item.Quantity + request.Amount;
+            if (newQuantity == 0)
+        {
+            return Ok("재고가 모두 소진되었습니다.");
+        }
 
             return NoContent();
-        }
+    }
         private static string? ValidateCommon(InventoryItem item)
         {
             if (string.IsNullOrWhiteSpace(item.ItemName))
