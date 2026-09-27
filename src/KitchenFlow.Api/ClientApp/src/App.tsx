@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import RecipeManager from "./RecipeManager";
 
 type Machine = {
   id: number;
@@ -425,6 +426,10 @@ function App() {
           ))}
         </tbody>
       </table>
+
+      <hr style={{ margin: "40px 0" }} />
+
+      <RecipeManager />
     </div>
   );
 }
