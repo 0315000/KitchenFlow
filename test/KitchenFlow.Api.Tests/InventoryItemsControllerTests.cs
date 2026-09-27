@@ -176,7 +176,7 @@ public class InventoryItemsControllerTests
         Assert.Equal("해당 재료를 찾을 수 없습니다.", notFound.Value);
     }
 
-        [Fact]
+    [Fact]
     public async Task AdjustInventoryItem_UnknownId_ReturnsNotFoundWithMessage()
     {
         using var context = CreateContext();
@@ -187,6 +187,7 @@ public class InventoryItemsControllerTests
         var notFound = Assert.IsType<NotFoundObjectResult>(result);
         Assert.Equal("해당 재료를 찾을 수 없습니다.", notFound.Value);
     }
+
     [Fact]
     public async Task ConsumeInventoryItem_ExpiredItem_ReturnsBadRequest()
     {
@@ -208,8 +209,7 @@ public class InventoryItemsControllerTests
         Assert.Contains("유통기한", badRequest.Value!.ToString());
     }
 
-        [Fact]
-  
+    [Fact]
     public async Task AdjustInventoryItem_ExpiredItemDecrease_ReturnsBadRequest()
     {
         using var context = CreateContext();
@@ -227,7 +227,9 @@ public class InventoryItemsControllerTests
         var result = await controller.AdjustInventoryItem(1, new AdjustInventoryRequest { Amount = -1 });
 
         Assert.IsType<BadRequestObjectResult>(result);
-    }// ---- 동시성(몽키테스트) 테스트: 실제 원자적 UPDATE를 검증하려면 관계형 SQLite provider가 필요하다.
+    }
+
+    // ---- 동시성(몽키테스트) 테스트: 실제 원자적 UPDATE를 검증하려면 관계형 SQLite provider가 필요하다.
     // "cache=shared" 메모리 DB + 여러 개의 별도 SqliteConnection을 사용해 여러 요청이
     // 동시에 같은 재료를 차감하는 상황을 재현한다. ----
 
@@ -345,6 +347,35 @@ public class InventoryItemsControllerTests
         using var verify = new SqliteTestDb(connectionString);
         var item = await verify.Context.InventoryItems.FindAsync(1);
         Assert.Equal(3, item!.Quantity);
+    }
+
+    [Fact]
+    public async Task AdjustInventoryItem_ExactStockDepletion_ReturnsSuccessWithMessage()
+    {
+        var connectionString = NewSharedMemoryConnectionString();
+        using var keepAlive = new SqliteConnection(connectionString);
+        keepAlive.Open();
+
+        using (var setup = new SqliteTestDb(connectionString))
+        {
+            setup.Context.Database.EnsureCreated();
+            setup.Context.InventoryItems.Add(new InventoryItem
+            {
+                ItemName = "밀가루", Quantity = 5, ExpiryDate = DateTime.Today.AddDays(10), Threshold = 1,
+            });
+            await setup.Context.SaveChangesAsync();
+        }
+
+        using var db = new SqliteTestDb(connectionString);
+        var controller = new InventoryItemsController(db.Context);
+        var result = await controller.AdjustInventoryItem(1, new AdjustInventoryRequest { Amount = -5 });
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Contains("소진", ok.Value!.ToString());
+
+        using var verify = new SqliteTestDb(connectionString);
+        var item = await verify.Context.InventoryItems.FindAsync(1);
+        Assert.Equal(0, item!.Quantity);
     }
 
     [Fact]
