@@ -96,34 +96,26 @@ namespace KitchenFlow.Api.Controllers
         }
 
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteCookingTask(int id)
-        {
-            var task = await _context.CookingTasks.FindAsync(id);
-            if (task == null)
-            {
-                return NotFound("해당 작업을 찾을 수 없습니다.");
-            }
+public async Task<IActionResult> DeleteCookingTask(int id)
+{
+    var task = await _context.CookingTasks.FindAsync(id);
+    if (task == null)
+    {
+        return NotFound("해당 조리 작업을 찾을 수 없습니다.");
+    }
 
-            _context.CookingTasks.Remove(task);
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateException)
-            {
-                // 다른 작업이 이 작업을 PrecedenceTaskId로 참조 중이면 DB의 Restrict 제약에 걸린다.
-                return BadRequest("다른 작업이 이 작업을 선행 작업으로 참조하고 있어 삭제할 수 없습니다.");
-            }
+    // 다른 작업이 이 작업을 선행 작업으로 쓰고 있으면 삭제 거부
+    bool isReferenced = await _context.CookingTasks
+        .AnyAsync(t => t.PrecedenceTaskId == id);
+    if (isReferenced)
+    {
+        return BadRequest("다른 작업이 이 작업을 선행 작업으로 참조하고 있어 삭제할 수 없습니다.");
+    }
 
-            return NoContent();
-        }
-
-        // DP3-1/DP3-2: 여러 작업을 등록 순서(Id) 기준으로 위상 정렬하면서,
-        // 같은 기계를 요구하는 작업들은 그 기계가 비는 시점에 순차 배정한다.
-        // 매 요청마다 새로 계산하기 때문에 별도의 "재계산" 로직이 필요 없다
-        // (기계가 고장/점검 중이면 그 시점의 계산에서 자동으로 반영됨).
-        [HttpGet("schedule")]
-        public async Task<IActionResult> GetSchedule()
+    _context.CookingTasks.Remove(task);
+    await _context.SaveChangesAsync();
+    return NoContent();
+}        public async Task<IActionResult> GetSchedule()
         {
             var tasks = await _context.CookingTasks.OrderBy(t => t.Id).ToListAsync();
             var machines = await _context.Machines.ToDictionaryAsync(m => m.Id);
