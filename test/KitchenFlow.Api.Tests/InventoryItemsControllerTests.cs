@@ -176,6 +176,17 @@ public class InventoryItemsControllerTests
         Assert.Equal("해당 재료를 찾을 수 없습니다.", notFound.Value);
     }
 
+        [Fact]
+    public async Task AdjustInventoryItem_UnknownId_ReturnsNotFoundWithMessage()
+    {
+        using var context = CreateContext();
+        var controller = new InventoryItemsController(context);
+
+        var result = await controller.AdjustInventoryItem(9999, new AdjustInventoryRequest { Amount = 1 });
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal("해당 재료를 찾을 수 없습니다.", notFound.Value);
+    }
     [Fact]
     public async Task ConsumeInventoryItem_ExpiredItem_ReturnsBadRequest()
     {
@@ -197,7 +208,26 @@ public class InventoryItemsControllerTests
         Assert.Contains("유통기한", badRequest.Value!.ToString());
     }
 
-    // ---- 동시성(몽키테스트) 테스트: 실제 원자적 UPDATE를 검증하려면 관계형 SQLite provider가 필요하다.
+        [Fact]
+  
+    public async Task AdjustInventoryItem_ExpiredItemDecrease_ReturnsBadRequest()
+    {
+        using var context = CreateContext();
+        var controller = new InventoryItemsController(context);
+        context.InventoryItems.Add(new InventoryItem
+        {
+            Id = 1,
+            ItemName = "상한우유",
+            Quantity = 5,
+            ExpiryDate = DateTime.Today.AddDays(-1),
+            Threshold = 1,
+        });
+        await context.SaveChangesAsync();
+
+        var result = await controller.AdjustInventoryItem(1, new AdjustInventoryRequest { Amount = -1 });
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }// ---- 동시성(몽키테스트) 테스트: 실제 원자적 UPDATE를 검증하려면 관계형 SQLite provider가 필요하다.
     // "cache=shared" 메모리 DB + 여러 개의 별도 SqliteConnection을 사용해 여러 요청이
     // 동시에 같은 재료를 차감하는 상황을 재현한다. ----
 

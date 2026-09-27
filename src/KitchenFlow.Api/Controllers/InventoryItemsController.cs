@@ -131,7 +131,7 @@ namespace KitchenFlow.Api.Controllers
                 // DP2-1/DP3-2: 유통기한이 지난 재료는 조리 작업에서 사용을 차단한다.
                 return BadRequest("유통기한이 지난 재료는 사용할 수 없습니다.");
             }
-
+     
             var affectedRows = await _context.InventoryItems
                 .Where(i => i.Id == id && i.Quantity >= request.Amount)
                 .ExecuteUpdateAsync(setters => setters
@@ -155,7 +155,10 @@ namespace KitchenFlow.Api.Controllers
             {
                 return NotFound("해당 재료를 찾을 수 없습니다.");
             }
-
+            if (request.Amount < 0 && item.ExpiryDate.Date < DateTime.Today)
+            {
+                return BadRequest("유통기한이 지난 재료는 사용할 수 없습니다.");
+            }
             var affectedRows = await _context.InventoryItems
                 .Where(i => i.Id == id && i.Quantity + request.Amount >= 0)
                 .ExecuteUpdateAsync(setters => setters
