@@ -32,6 +32,8 @@ public class InventoryItemsControllerTests
         Threshold = 2,
     };
 
+    // [엣지케이스 표 3번] 재료 이름을 빈칸으로 등록 시도
+    // → "재료명은 비어 있을 수 없습니다" 같은 메시지와 함께 거절(400)해야 한다.
     [Fact]
     public async Task CreateInventoryItem_EmptyItemName_ReturnsBadRequest()
     {
@@ -176,6 +178,8 @@ public class InventoryItemsControllerTests
         Assert.Equal("해당 재료를 찾을 수 없습니다.", notFound.Value);
     }
 
+    // [엣지케이스 표 2번] id 999처럼 존재하지 않는 재료를 Adjust로 조정하려고 함
+    // → 내부 에러(500)로 터지지 않고, "해당 재료를 찾을 수 없습니다."(404)로 처리해야 한다.
     [Fact]
     public async Task AdjustInventoryItem_UnknownId_ReturnsNotFoundWithMessage()
     {
@@ -188,6 +192,8 @@ public class InventoryItemsControllerTests
         Assert.Equal("해당 재료를 찾을 수 없습니다.", notFound.Value);
     }
 
+    // [엣지케이스 표 4번] 유통기한 지난 재료를 사용(consume)하려고 함
+    // → 맛/위생 문제로 이어지지 않도록 조리 불가 처리(400 거절)해야 한다.
     [Fact]
     public async Task ConsumeInventoryItem_ExpiredItem_ReturnsBadRequest()
     {
@@ -209,6 +215,10 @@ public class InventoryItemsControllerTests
         Assert.Contains("유통기한", badRequest.Value!.ToString());
     }
 
+    // [엣지케이스 표 5번] Adjust(마이너스)로, 즉 Consume이 아닌 다른 방법으로
+    // 유통기한 지난 재료를 빼려고 함
+    // → Consume과 똑같이 유통기한 검사를 해서 거절(400)해야 한다.
+    // (이 검사가 없으면 Adjust를 이용해 유통기한 검증을 몰래 피해갈 수 있음)
     [Fact]
     public async Task AdjustInventoryItem_ExpiredItemDecrease_ReturnsBadRequest()
     {
@@ -321,6 +331,9 @@ public class InventoryItemsControllerTests
         Assert.Equal(2, item!.Quantity); // 실패한 요청은 재고를 전혀 바꾸지 않는다.
     }
 
+    // [엣지케이스 표 1번] 재고가 3개뿐인데 5개를 빼려고 함 (Adjust)
+    // → "안 됩니다" 하고 거절(400)해야 하고, 재고는 그대로 3개여야 한다.
+    // (막지 않으면 재고가 -2개가 되는 말도 안 되는 상황이 발생함)
     [Fact]
     public async Task AdjustInventoryItem_InsufficientStock_ReturnsBadRequestAndLeavesQuantityUnchanged()
     {
@@ -349,6 +362,9 @@ public class InventoryItemsControllerTests
         Assert.Equal(3, item!.Quantity);
     }
 
+    // [엣지케이스 표 6번] 재고를 있는 만큼 딱 다 빼는 요청 (남는 것 없이 정확히 전량 소진)
+    // → 정상적으로 처리(성공, 200)해주고, 재고가 0이 되면 "재고가 모두 소진되었습니다" 메시지를 함께 응답해야 한다.
+    // (없으면 정당한 전량 출고가 잘못 거절되거나, 다 떨어진 걸 아무도 몰라서 재입고를 놓칠 수 있음)
     [Fact]
     public async Task AdjustInventoryItem_ExactStockDepletion_ReturnsSuccessWithMessage()
     {
@@ -420,4 +436,4 @@ public class InventoryItemsControllerTests
         var item = await verify.Context.InventoryItems.FindAsync(1);
         Assert.Equal(0, item!.Quantity); // 절대 음수가 되지 않고 정확히 0에서 멈춘다.
     }
-}
+} 
