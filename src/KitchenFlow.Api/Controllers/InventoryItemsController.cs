@@ -168,7 +168,7 @@ namespace KitchenFlow.Api.Controllers
         {
             return BadRequest("이 조정을 적용하면 재고가 음수가 됩니다.");
         }
-
+ 
         var newQuantity = item.Quantity + request.Amount;
             if (newQuantity == 0)
         {
