@@ -15,5 +15,6 @@ namespace KitchenFlow.Api.Models
         public int DurationMinutes { get; set; }
         public int? TempC { get; set; }                        // 온도 없는 단계는 null
         public List<StepInput> Inputs { get; set; } = new();   // 이 단계에서 쓰는 재료들
+        public List<StepDependency> DependsOn { get; set; } = new();  // 이 단계보다 먼저 끝나야 하는 단계들 (병렬 조리)
     }
 }

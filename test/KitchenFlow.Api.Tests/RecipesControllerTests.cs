@@ -174,10 +174,171 @@ namespace KitchenFlow.Api.Tests
 
         [Fact]
         public async Task MoveStep_TopUp_ReturnsBadRequest()
-        {
+        { 
             var result = await _controller.MoveStep(1, 1, "up");
 
             Assert.IsType<BadRequestObjectResult>(result);
         }
+
+        // ── 병렬 조리: 여러 단계를 동시에 진행해서 한 요리로 완성 ──
+
+        private async Task<(int total, int sequential, Dictionary<int, (int start, int end)> times)> Schedule(int recipeId)
+        {
+            _context.ChangeTracker.Clear();
+            var result = await _controller.GetSchedule(recipeId);
+            var ok = Assert.IsType<OkObjectResult>(result);
+            var json = System.Text.Json.JsonSerializer.Serialize(ok.Value);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var times = new Dictionary<int, (int, int)>();
+            foreach (var step in root.GetProperty("Steps").EnumerateArray())
+            {
+                times[step.GetProperty("Id").GetInt32()] =
+                    (step.GetProperty("StartMinute").GetInt32(), step.GetProperty("EndMinute").GetInt32());
+            }
+            return (root.GetProperty("TotalMinutes").GetInt32(), root.GetProperty("SequentialMinutes").GetInt32(), times);
+        }
+
+        [Fact]
+        public async Task Schedule_VegetableStirFry_RunsFirstThreeStepsInParallel()
+        {
+            var (total, sequential, t) = await Schedule(2);   // 야채볶음
+
+            // 채소 계량(4) · 양념 섞기(5) · 팬 예열(6) 이 모두 0분에 동시에 시작
+            Assert.Equal(0, t[4].start);
+            Assert.Equal(0, t[5].start);
+            Assert.Equal(0, t[6].start);
+            // 볶기(7)는 계량(~2분)과 예열(~3분)이 둘 다 끝난 3분에 시작
+            Assert.Equal(3, t[7].start);
+            Assert.Equal(11, total);        // 동시에 하면 11분
+            Assert.Equal(15, sequential);   // 하나씩 하면 15분
+        }
+
+        [Fact]
+        public async Task Schedule_RoastChicken_PrepHappensWhileOvenPreheats()
+        {
+            var (total, sequential, t) = await Schedule(3);   // 로스트치킨
+
+            Assert.Equal(0, t[10].start);           // 오븐 예열 0~10분
+            Assert.True(t[14].end <= 10);           // 허브버터는 예열하는 동안 끝남
+            Assert.Equal(10, t[15].start);          // 1차 굽기는 예열이 끝난 10분에 시작
+            Assert.True(t[18].end <= t[17].end);    // 버터 소스는 굽는 동안 따로 준비
+            Assert.True(total < sequential);
+        }
+
+        [Fact]
+        public async Task SetDependencies_Cycle_ReturnsBadRequest()
+        {
+            // 야채볶음: 4 → 7 → 8 → 9 인데, 4가 9를 기다리게 하면 순환
+            var result = await _controller.SetDependencies(2, 4, new StepDependenciesRequest { DependsOnStepIds = new List<int> { 9 } });
+
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task SetDependencies_MakeStepParallel_ChangesSchedule()
+        {
+            // 야채볶음 "남은 재료 보관"(9, 냉장고)의 선행을 없애면 다른 단계와 동시에 0분에 시작
+            var result = await _controller.SetDependencies(2, 9, new StepDependenciesRequest());
+
+            Assert.IsType<NoContentResult>(result);
+            var (_, _, t) = await Schedule(2);
+            Assert.Equal(0, t[9].start);
+        }
+
+        [Fact]
+        public async Task Schedule_SameMachine_NeverOverlaps()
+        {
+            // 라면 3단계(끓이기)의 선행을 없애도, 1단계와 같은 인덕션이라 동시에 못 하고 기다린다
+            await _controller.SetDependencies(1, 3, new StepDependenciesRequest());
+
+            var (_, _, t) = await Schedule(1);
+            Assert.True(t[3].start >= t[1].end);
+        }
+
+        [Fact]
+        public async Task AddStep_DefaultsToAfterLastStep()
+        {
+            await _controller.AddStep(1, new StepCreateRequest { MachineId = 4, Action = "그릇에 담기", DurationMinutes = 1 });
+
+            var (total, _, _) = await Schedule(1);
+            Assert.Equal(11, total);   // 라면 5+1+4 뒤에 1분 → 순차 11분
+        }
+
+        [Fact]
+        public async Task DeleteStep_ReconnectsFlow()
+        {
+            // 라면 1 → 2 → 3 에서 2를 지우면 3은 1을 기다린다
+            await _controller.DeleteStep(1, 2);
+
+            var (_, _, t) = await Schedule(1);
+            Assert.Equal(t[1].end, t[3].start);
+        }
+               // ── 여러 요리 주문: 기계 경합 + 한곳에 모아 서빙 ──
+
+        private async Task<System.Text.Json.JsonElement> Combined(params int[] recipeIds)
+        {
+            _context.ChangeTracker.Clear();
+            var result = await _controller.GetCombinedSchedule(recipeIds.ToList());
+            var ok = Assert.IsType<OkObjectResult>(result);
+            var json = System.Text.Json.JsonSerializer.Serialize(ok.Value);
+            return System.Text.Json.JsonDocument.Parse(json).RootElement;
+        }
+
+        [Fact]
+        public async Task CombinedSchedule_ServeAtSlowestDish()
+        {
+            var root = await Combined(2, 3);   // 야채볶음 + 로스트치킨
+
+            Assert.Equal(87, root.GetProperty("ServeMinute").GetInt32());
+            Assert.Equal(114, root.GetProperty("SequentialMinutes").GetInt32());
+
+            var dishes = root.GetProperty("Dishes").EnumerateArray()
+                .ToDictionary(d => d.GetProperty("RecipeId").GetInt32());
+            Assert.Equal(11, dishes[2].GetProperty("FinishMinute").GetInt32());
+            Assert.Equal(76, dishes[2].GetProperty("WaitBeforeServe").GetInt32());
+            Assert.Equal(0, dishes[3].GetProperty("WaitBeforeServe").GetInt32());
+        }
+
+        [Fact]
+        public async Task CombinedSchedule_SameMachine_NeverOverlaps()
+        {
+            var root = await Combined(1, 2, 3);   // 세 요리 모두
+
+            var byMachine = root.GetProperty("Steps").EnumerateArray()
+                .GroupBy(s => s.GetProperty("MachineId").GetInt32());
+            foreach (var machine in byMachine)
+            {
+                var ordered = machine.OrderBy(s => s.GetProperty("StartMinute").GetInt32()).ToList();
+                for (int i = 1; i < ordered.Count; i++)
+                {
+                    Assert.True(ordered[i].GetProperty("StartMinute").GetInt32()
+                                >= ordered[i - 1].GetProperty("EndMinute").GetInt32());
+                }
+            }
+        }
+
+        [Fact]
+        public async Task CombinedSchedule_ButterSauce_WaitsForInduction()
+        {
+            // 로스트치킨만: 버터 소스(id 18)는 인덕션이 비어 있으니 0분 시작
+            var alone = await Combined(3);
+            var aloneStart = alone.GetProperty("Steps").EnumerateArray()
+                .Single(s => s.GetProperty("Id").GetInt32() == 18).GetProperty("StartMinute").GetInt32();
+            Assert.Equal(0, aloneStart);
+
+            // 야채볶음과 같이: 인덕션을 야채볶음이 10분까지 쓰므로 기다린다
+            var together = await Combined(2, 3);
+            var togetherStart = together.GetProperty("Steps").EnumerateArray()
+                .Single(s => s.GetProperty("Id").GetInt32() == 18).GetProperty("StartMinute").GetInt32();
+            Assert.Equal(10, togetherStart);
+        }
+
+        [Fact]
+        public async Task CombinedSchedule_EmptyOrUnknown_IsRejected()
+        {
+            Assert.IsType<BadRequestObjectResult>(await _controller.GetCombinedSchedule(new List<int>()));
+            Assert.IsType<NotFoundObjectResult>(await _controller.GetCombinedSchedule(new List<int> { 2, 999 }));
+        } 
     }
 }

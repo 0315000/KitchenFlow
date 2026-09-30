@@ -14,6 +14,7 @@ namespace KitchenFlow.Api.Data
         public DbSet<Recipe> Recipes => Set<Recipe>();
         public DbSet<Step> Steps => Set<Step>();
         public DbSet<StepInput> StepInputs => Set<StepInput>();
+        public DbSet<StepDependency> StepDependencies => Set<StepDependency>();
         public DbSet<Ingredient> Ingredients => Set<Ingredient>();
         public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
         public DbSet<CookingTask> CookingTasks => Set<CookingTask>();
@@ -60,6 +61,23 @@ namespace KitchenFlow.Api.Data
                 .HasForeignKey(si => si.IngredientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // ③ StepDependency : 단계 간 선후 관계 (병렬 조리)
+            modelBuilder.Entity<StepDependency>()
+                .HasKey(d => new { d.StepId, d.DependsOnStepId });
+
+            // 두 FK 모두 Step을 가리키므로, 어느 쪽 단계가 지워져도 연결만 함께 삭제
+            modelBuilder.Entity<StepDependency>()
+                .HasOne(d => d.Step)
+                .WithMany(s => s.DependsOn)
+                .HasForeignKey(d => d.StepId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<StepDependency>()
+                .HasOne(d => d.DependsOn)
+                .WithMany()
+                .HasForeignKey(d => d.DependsOnStepId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // ───────────────────────── Machine ─────────────────────────
 
             // 동시성/몽키테스트 대비: 이름 중복은 애플리케이션 코드뿐 아니라
@@ -91,11 +109,11 @@ namespace KitchenFlow.Api.Data
 
             // 기계 5대 (Id 1~3은 기존 테스트에서 사용 중 → 변경 금지)
             modelBuilder.Entity<Machine>().HasData(
-                new Machine { Id = 1, Name = "오븐" },
-                new Machine { Id = 2, Name = "믹서" },
-                new Machine { Id = 3, Name = "냉장고" },
-                new Machine { Id = 4, Name = "인덕션" },
-                new Machine { Id = 5, Name = "저울" }
+                new Machine { Id = 1, Name = "오븐",   Kind = "Oven",      CapacityMl = 50000, MinTempC = 50,  MaxTempC = 250 },
+                new Machine { Id = 2, Name = "믹서",   Kind = "Mixer",     CapacityMl = 5000,  MinTempC = 0,   MaxTempC = 40 },
+                new Machine { Id = 3, Name = "냉장고", Kind = "Fridge",    CapacityMl = 200000, MinTempC = -20, MaxTempC = 10 },
+                new Machine { Id = 4, Name = "인덕션", Kind = "Induction", CapacityMl = 5000,  MinTempC = 30,  MaxTempC = 240 },
+                new Machine { Id = 5, Name = "저울",   Kind = "Scale",     CapacityMl = 10000, MinTempC = 0,   MaxTempC = 40 }
             );
 
             // 재료 12종
@@ -177,6 +195,36 @@ namespace KitchenFlow.Api.Data
                 new StepInput { StepId = 13, IngredientId = 12, Quantity = 20 },    // 마늘
                 new StepInput { StepId = 14, IngredientId = 9,  Quantity = 50 },    // 버터 (허브버터)
                 new StepInput { StepId = 18, IngredientId = 9,  Quantity = 30 }     // 버터 (소스)
+            );
+
+            // ── 단계 선후 관계 (StepId 는 DependsOnStepId 가 끝나야 시작) ──
+            // 선행이 없는 단계는 처음부터 동시에 시작할 수 있다.
+            modelBuilder.Entity<StepDependency>().HasData(
+                // 라면: 1 → 2 → 3 (순차)
+                new StepDependency { StepId = 2,  DependsOnStepId = 1 },
+                new StepDependency { StepId = 3,  DependsOnStepId = 2 },
+
+                // 야채볶음: 계량(4) · 양념(5) · 팬 예열(6) 을 동시에 → 볶기(7) → 양념 넣기(8) → 보관(9)
+                new StepDependency { StepId = 7,  DependsOnStepId = 4 },
+                new StepDependency { StepId = 7,  DependsOnStepId = 6 },
+                new StepDependency { StepId = 8,  DependsOnStepId = 5 },
+                new StepDependency { StepId = 8,  DependsOnStepId = 7 },
+                new StepDependency { StepId = 9,  DependsOnStepId = 8 },
+
+                // 로스트치킨: 오븐 예열(10) · 닭 준비(11→12) · 허브버터(13→14) 를 동시에
+                //            → 1차 굽기(15) → 뒤집기(16) → 2차 굽기(17)
+                //            버터 소스(18)는 굽는 동안 따로 → 마무리 굽기(19) 에서 합류 → 휴지(20) → 완성(21)
+                new StepDependency { StepId = 12, DependsOnStepId = 11 },
+                new StepDependency { StepId = 14, DependsOnStepId = 13 },
+                new StepDependency { StepId = 15, DependsOnStepId = 10 },
+                new StepDependency { StepId = 15, DependsOnStepId = 12 },
+                new StepDependency { StepId = 15, DependsOnStepId = 14 },
+                new StepDependency { StepId = 16, DependsOnStepId = 15 },
+                new StepDependency { StepId = 17, DependsOnStepId = 16 },
+                new StepDependency { StepId = 19, DependsOnStepId = 17 },
+                new StepDependency { StepId = 19, DependsOnStepId = 18 },
+                new StepDependency { StepId = 20, DependsOnStepId = 19 },
+                new StepDependency { StepId = 21, DependsOnStepId = 20 }
             );
         }
     }
