@@ -4,3 +4,33 @@ GET {{KitchenFlow_Api_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+### ── 레시피 목록
+GET {{KitchenFlow_Api_HostAddress}}/api/recipes
+
+### ── 레시피 상세 (라면)
+GET {{KitchenFlow_Api_HostAddress}}/api/recipes/1
+
+### ✅ 정상: 라면에 4단계 추가
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/1/steps
+Content-Type: application/json
+
+{ "machineId": 4, "action": "그릇에 담기", "durationMinutes": 1 }
+
+### ❌ 없는 기계
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/1/steps
+Content-Type: application/json
+
+{ "machineId": 999, "action": "테스트", "durationMinutes": 1 }
+
+### ❌ 소요 시간 0
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/1/steps
+Content-Type: application/json
+
+{ "machineId": 4, "action": "테스트", "durationMinutes": 0 }
+
+### 🗑️ 단계 삭제: 라면의 "그릇에 담기"(id 22)
+DELETE {{KitchenFlow_Api_HostAddress}}/api/recipes/1/steps/22
+
+### ❌ 없는 단계 삭제
+DELETE {{KitchenFlow_Api_HostAddress}}/api/recipes/1/steps/999

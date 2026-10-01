@@ -7,5 +7,6 @@ namespace KitchenFlow.Api.Models
         public decimal Quantity { get; set; }
         public DateTime ExpiryDate { get; set; }
         public decimal Threshold { get; set; }
+        public string Unit { get; set; } = string.Empty;
     }
-}
+} 

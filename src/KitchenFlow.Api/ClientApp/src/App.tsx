@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import RecipeManager from "./RecipeManager";
 
 type Machine = {
   id: number;
@@ -8,7 +9,8 @@ type Machine = {
   minTempC: number;
   maxTempC: number;
 };
-
+// 온도를 쓰지 않는 기계 종류 (화면에서 온도를 "-"로 표시, 입력칸 숨김)
+const noTempKinds = ["Scale"];
 const emptyForm = {
   name: "",
   kind: "",
@@ -254,25 +256,29 @@ function App() {
             value={form.capacityMl}
             onChange={handleChange}
           />
-        </div> 
-        <div>
-          <label>최저온도(°C): </label>
-          <input
-            name="minTempC"
-            type="number"
-            value={form.minTempC}
-            onChange={handleChange}
-          />
         </div>
-        <div>
-          <label>최고온도(°C): </label>
-          <input
-            name="maxTempC"
-            type="number"
-            value={form.maxTempC}
-            onChange={handleChange}
-          />
-        </div>
+               {!noTempKinds.includes(form.kind) && (
+          <>
+            <div>
+              <label>최저온도(°C): </label>
+              <input
+                name="minTempC"
+                type="number"
+                value={form.minTempC}
+                onChange={handleChange}
+              />
+            </div>
+            <div>
+              <label>최고온도(°C): </label>
+              <input
+                name="maxTempC"
+                type="number"
+                value={form.maxTempC}
+                onChange={handleChange}
+              />
+            </div>
+          </>
+        )}
 
         {errorMessage && (
           <p style={{ color: "red" }}>{errorMessage}</p>
@@ -306,8 +312,8 @@ function App() {
               <td>{m.name}</td>
               <td>{m.kind}</td>
               <td>{m.capacityMl}</td>
-              <td>{m.minTempC}</td>
-              <td>{m.maxTempC}</td>
+              <td>{noTempKinds.includes(m.kind) ? "-" : m.minTempC}</td>
+              <td>{noTempKinds.includes(m.kind) ? "-" : m.maxTempC}</td>
               <td>
                 <button onClick={() => handleEdit(m)}>수정</button>
                 <button onClick={() => handleDelete(m.id)}>삭제</button>
@@ -349,15 +355,6 @@ function App() {
             onChange={handleInvChange}
           />
         </div>
-        <div>
-          <label>최소 재고 임계치: </label>
-          <input
-            name="threshold"
-            type="number"
-            value={invForm.threshold}
-            onChange={handleInvChange}
-          />
-        </div>
 
         {invErrorMessage && (
           <p style={{ color: "red" }}>{invErrorMessage}</p>
@@ -380,7 +377,6 @@ function App() {
             <th>재료명</th>
             <th>수량</th>
             <th>유통기한</th>
-            <th>최소 임계치</th>
             <th>상태</th>
             <th>사용(차감)</th>
             <th>작업</th>
@@ -392,7 +388,6 @@ function App() {
               <td>{i.itemName}</td>
               <td>{i.quantity}</td>
               <td>{i.expiryDate.slice(0, 10)}</td>
-              <td>{i.threshold}</td>
               <td>
                 {isExpired(i.expiryDate) && (
                   <span style={{ color: "red" }}>유통기한 지남 </span>
@@ -425,6 +420,10 @@ function App() {
           ))}
         </tbody>
       </table>
+
+      <hr style={{ margin: "40px 0" }} />
+
+      <RecipeManager />
     </div>
   );
 }

@@ -106,6 +106,17 @@ namespace KitchenFlow.Api.Controllers
                 return NotFound("해당 기계를 찾을 수 없습니다.");
             }
 
+            // 레시피 단계나 조리 작업에서 쓰는 기계는 삭제할 수 없다 (Restrict).
+            // DB 예외(500)가 나기 전에 미리 확인해서 400 + 사유 메시지로 알려준다.
+            if (await _context.Steps.AnyAsync(s => s.MachineId == id))
+            {
+                return BadRequest("레시피 단계에서 사용 중인 기계는 삭제할 수 없습니다.");
+            }
+            if (await _context.CookingTasks.AnyAsync(t => t.RequiredMachineId == id))
+            {
+                return BadRequest("조리 작업에서 사용 중인 기계는 삭제할 수 없습니다.");
+            }
+
             _context.Machines.Remove(machine);
             await _context.SaveChangesAsync();
             return NoContent();

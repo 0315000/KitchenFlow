@@ -3,6 +3,7 @@ using System;
 using KitchenFlow.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KitchenFlow.Api.Migrations
 {
     [DbContext(typeof(KitchenFlowDbContext))]
-    partial class KitchenFlowDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260927144334_SeedRecipeData")]
+    partial class SeedRecipeData
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -224,50 +227,50 @@ namespace KitchenFlow.Api.Migrations
                         new
                         {
                             Id = 1,
-                            CapacityMl = 50000,
+                            CapacityMl = 0,
                             IsAvailable = true,
-                            Kind = "Oven",
-                            MaxTempC = 250,
-                            MinTempC = 50,
+                            Kind = "",
+                            MaxTempC = 0,
+                            MinTempC = 0,
                             Name = "오븐"
                         },
                         new
                         {
                             Id = 2,
-                            CapacityMl = 5000,
+                            CapacityMl = 0,
                             IsAvailable = true,
-                            Kind = "Mixer",
-                            MaxTempC = 40,
+                            Kind = "",
+                            MaxTempC = 0,
                             MinTempC = 0,
                             Name = "믹서"
                         },
                         new
                         {
                             Id = 3,
-                            CapacityMl = 200000,
+                            CapacityMl = 0,
                             IsAvailable = true,
-                            Kind = "Fridge",
-                            MaxTempC = 10,
-                            MinTempC = -20,
+                            Kind = "",
+                            MaxTempC = 0,
+                            MinTempC = 0,
                             Name = "냉장고"
                         },
                         new
                         {
                             Id = 4,
-                            CapacityMl = 5000,
+                            CapacityMl = 0,
                             IsAvailable = true,
-                            Kind = "Induction",
-                            MaxTempC = 240,
-                            MinTempC = 30,
+                            Kind = "",
+                            MaxTempC = 0,
+                            MinTempC = 0,
                             Name = "인덕션"
                         },
                         new
                         {
                             Id = 5,
-                            CapacityMl = 10000,
+                            CapacityMl = 0,
                             IsAvailable = true,
-                            Kind = "Scale",
-                            MaxTempC = 40,
+                            Kind = "",
+                            MaxTempC = 0,
                             MinTempC = 0,
                             Name = "저울"
                         });
@@ -544,113 +547,6 @@ namespace KitchenFlow.Api.Migrations
                         });
                 });
 
-            modelBuilder.Entity("KitchenFlow.Api.Models.StepDependency", b =>
-                {
-                    b.Property<int>("StepId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("DependsOnStepId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("StepId", "DependsOnStepId");
-
-                    b.HasIndex("DependsOnStepId");
-
-                    b.ToTable("StepDependencies");
-
-                    b.HasData(
-                        new
-                        {
-                            StepId = 2,
-                            DependsOnStepId = 1
-                        },
-                        new
-                        {
-                            StepId = 3,
-                            DependsOnStepId = 2
-                        },
-                        new
-                        {
-                            StepId = 7,
-                            DependsOnStepId = 4
-                        },
-                        new
-                        {
-                            StepId = 7,
-                            DependsOnStepId = 6
-                        },
-                        new
-                        {
-                            StepId = 8,
-                            DependsOnStepId = 5
-                        },
-                        new
-                        {
-                            StepId = 8,
-                            DependsOnStepId = 7
-                        },
-                        new
-                        {
-                            StepId = 9,
-                            DependsOnStepId = 8
-                        },
-                        new
-                        {
-                            StepId = 12,
-                            DependsOnStepId = 11
-                        },
-                        new
-                        {
-                            StepId = 14,
-                            DependsOnStepId = 13
-                        },
-                        new
-                        {
-                            StepId = 15,
-                            DependsOnStepId = 10
-                        },
-                        new
-                        {
-                            StepId = 15,
-                            DependsOnStepId = 12
-                        },
-                        new
-                        {
-                            StepId = 15,
-                            DependsOnStepId = 14
-                        },
-                        new
-                        {
-                            StepId = 16,
-                            DependsOnStepId = 15
-                        },
-                        new
-                        {
-                            StepId = 17,
-                            DependsOnStepId = 16
-                        },
-                        new
-                        {
-                            StepId = 19,
-                            DependsOnStepId = 17
-                        },
-                        new
-                        {
-                            StepId = 19,
-                            DependsOnStepId = 18
-                        },
-                        new
-                        {
-                            StepId = 20,
-                            DependsOnStepId = 19
-                        },
-                        new
-                        {
-                            StepId = 21,
-                            DependsOnStepId = 20
-                        });
-                });
-
             modelBuilder.Entity("KitchenFlow.Api.Models.StepInput", b =>
                 {
                     b.Property<int>("StepId")
@@ -782,25 +678,6 @@ namespace KitchenFlow.Api.Migrations
                     b.Navigation("Recipe");
                 });
 
-            modelBuilder.Entity("KitchenFlow.Api.Models.StepDependency", b =>
-                {
-                    b.HasOne("KitchenFlow.Api.Models.Step", "DependsOn")
-                        .WithMany()
-                        .HasForeignKey("DependsOnStepId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("KitchenFlow.Api.Models.Step", "Step")
-                        .WithMany("DependsOn")
-                        .HasForeignKey("StepId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("DependsOn");
-
-                    b.Navigation("Step");
-                });
-
             modelBuilder.Entity("KitchenFlow.Api.Models.StepInput", b =>
                 {
                     b.HasOne("Ingredient", "Ingredient")
@@ -827,8 +704,6 @@ namespace KitchenFlow.Api.Migrations
 
             modelBuilder.Entity("KitchenFlow.Api.Models.Step", b =>
                 {
-                    b.Navigation("DependsOn");
-
                     b.Navigation("Inputs");
                 });
 #pragma warning restore 612, 618

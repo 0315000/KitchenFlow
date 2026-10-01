@@ -83,6 +83,7 @@ namespace KitchenFlow.Api.Controllers
             existing.Quantity = item.Quantity;
             existing.ExpiryDate = item.ExpiryDate;
             existing.Threshold = item.Threshold;
+            existing.Unit = item.Unit;
 
             await _context.SaveChangesAsync();
             return NoContent();
@@ -130,7 +131,7 @@ namespace KitchenFlow.Api.Controllers
                 // DP2-1/DP3-2: 유통기한이 지난 재료는 조리 작업에서 사용을 차단한다.
                 return BadRequest("유통기한이 지난 재료는 사용할 수 없습니다.");
             }
-
+     
             var affectedRows = await _context.InventoryItems
                 .Where(i => i.Id == id && i.Quantity >= request.Amount)
                 .ExecuteUpdateAsync(setters => setters
@@ -146,6 +147,36 @@ namespace KitchenFlow.Api.Controllers
             return NoContent();
         }
 
+                [HttpPost("{id}/adjust")]
+        public async Task<IActionResult> AdjustInventoryItem(int id, AdjustInventoryRequest request)
+        {
+            var item = await _context.InventoryItems.FindAsync(id);
+            if (item == null)
+            {
+                return NotFound("해당 재료를 찾을 수 없습니다.");
+            }
+            if (request.Amount < 0 && item.ExpiryDate.Date < DateTime.Today)
+            {
+                return BadRequest("유통기한이 지난 재료는 사용할 수 없습니다.");
+            }
+            var affectedRows = await _context.InventoryItems
+                .Where(i => i.Id == id && i.Quantity + request.Amount >= 0)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(i => i.Quantity, i => i.Quantity + request.Amount));
+
+                if (affectedRows == 0)
+        {
+            return BadRequest("이 조정을 적용하면 재고가 음수가 됩니다.");
+        }
+ 
+        var newQuantity = item.Quantity + request.Amount;
+            if (newQuantity == 0)
+        {
+            return Ok("재고가 모두 소진되었습니다.");
+        }
+
+            return NoContent();
+    }
         private static string? ValidateCommon(InventoryItem item)
         {
             if (string.IsNullOrWhiteSpace(item.ItemName))
