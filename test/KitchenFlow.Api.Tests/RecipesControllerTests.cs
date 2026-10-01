@@ -339,6 +339,24 @@ namespace KitchenFlow.Api.Tests
         {
             Assert.IsType<BadRequestObjectResult>(await _controller.GetCombinedSchedule(new List<int>()));
             Assert.IsType<NotFoundObjectResult>(await _controller.GetCombinedSchedule(new List<int> { 2, 999 }));
-        } 
+        }
+
+        // ── T5: 실행 전 검사 API ──
+
+        [Fact]
+        public async Task ValidateRecipe_UnknownId_ReturnsNotFound()
+        {
+            var result = await _controller.ValidateRecipe(999);
+
+            Assert.IsType<NotFoundObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task ValidateRecipe_SeedRecipe_ReturnsOk()
+        {
+            var result = await _controller.ValidateRecipe(1);   // 라면
+
+            Assert.IsType<OkObjectResult>(result);
+        }
     }
 }

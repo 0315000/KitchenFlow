@@ -34,3 +34,9 @@ DELETE {{KitchenFlow_Api_HostAddress}}/api/recipes/1/steps/22
 
 ### ❌ 없는 단계 삭제
 DELETE {{KitchenFlow_Api_HostAddress}}/api/recipes/1/steps/999
+
+### ── T5 실행 전 검사: 라면 (정상 → violations 빈 배열)
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/1/validate
+
+### ── T5 실행 전 검사: 없는 레시피 → 404
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/999/validate

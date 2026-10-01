@@ -297,6 +297,49 @@ namespace KitchenFlow.Api.Controllers
             return NoContent();
         }
 
+        // POST /api/recipes/{id}/validate : 실행 전 검사
+        // 위반이 있어도 200 — "검사해 줘"라는 요청 자체는 성공했고, 위반 목록이 그 결과다.
+        // 404는 레시피가 없을 때(요청 자체가 잘못됐을 때)만.
+        [HttpPost("{id}/validate")]
+        public async Task<IActionResult> ValidateRecipe(int id)
+        {
+            if (!await _context.Recipes.AnyAsync(r => r.Id == id))
+            {
+                return NotFound("해당 레시피를 찾을 수 없습니다.");
+            }
+
+            // ① DB → 검증기 입력으로 옮겨 담기 (DB를 만지는 건 여기까지)
+            var steps = await _context.Steps
+                .Where(s => s.RecipeId == id)
+                .OrderBy(s => s.Order)
+                .Select(s => new ValidationStep(
+                    s.Id,
+                    s.Order,
+                    s.MachineId,
+                    s.DurationMinutes,
+                    s.TempC,
+                    s.Inputs.Select(i => new ValidationInput(i.IngredientId, i.Quantity)).ToList()))
+                .ToListAsync();
+
+            var machines = await _context.Machines.ToDictionaryAsync(
+                m => m.Id,
+                m => new ValidationMachine(m.Id, m.Name, m.CapacityMl, m.MinTempC, m.MaxTempC, m.IsAvailable));
+
+            var ingredients = await _context.Ingredients.ToDictionaryAsync(
+                i => i.Id,
+                i => new ValidationIngredient(i.Id, i.Name, i.Unit, i.StockQty));
+
+            // ② 판단은 순수 함수에게
+            var violations = RecipeValidator.Validate(steps, machines, ingredients);
+
+            return Ok(new
+            {
+                RecipeId = id,
+                IsValid = violations.Count == 0,
+                Violations = violations
+            });
+        }
+
         // GET /api/recipes/{id}/schedule : 조리 흐름 계산
         // 여러 단계를 동시에 진행해서 한 요리로 완성되기까지의 시작/종료 시각
         [HttpGet("{id}/schedule")]
