@@ -21,8 +21,30 @@ type Step = {
   action: string;
   durationMinutes: number;
   tempC: number | null;
+  dependsOn: number[]; // 이 단계보다 먼저 끝나야 하는 단계 Id
   inputs: StepInput[];
 };
+
+// 조리 흐름(병렬) 계산 결과
+type ScheduledStep = {
+  id: number;
+  order: number;
+  action: string;
+  machineId: number;
+  machineName: string;
+  durationMinutes: number;
+  startMinute: number;
+  endMinute: number;
+};
+
+type Schedule = {
+  totalMinutes: number;
+  sequentialMinutes: number;
+  steps: ScheduledStep[];
+};
+
+const machineColors = ["#4e79a7", "#f28e2b", "#59a14f", "#e15759", "#76b7b2", "#b07aa1", "#edc948"];
+const colorOf = (machineId: number) => machineColors[machineId % machineColors.length];
 
 type RecipeDetail = { id: number; name: string; steps: Step[] };
 
@@ -39,6 +61,9 @@ function RecipeManager() {
   const [stepForm, setStepForm] = useState(emptyStepForm);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); // 연타 방지
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [editingDepsId, setEditingDepsId] = useState<number | null>(null);
+  const [draftDeps, setDraftDeps] = useState<number[]>([]);
 
   const fetchRecipes = async () => {
     const res = await fetch("/api/recipes");
@@ -49,9 +74,12 @@ function RecipeManager() {
     const res = await fetch(`/api/recipes/${id}`);
     if (!res.ok) {
       setDetail(null);
+      setSchedule(null);
       return;
     }
     setDetail(await res.json());
+    const scheduleRes = await fetch(`/api/recipes/${id}/schedule`);
+    setSchedule(scheduleRes.ok ? await scheduleRes.json() : null);
   };
 
   useEffect(() => {
@@ -66,7 +94,9 @@ function RecipeManager() {
       fetchDetail(selectedId);
     } else {
       setDetail(null);
+      setSchedule(null);
     }
+    setEditingDepsId(null);
   }, [selectedId]);
 
   // 공통 호출: 연타 방지 + 서버 에러 메시지 표시 + 목록/상세 다시 불러오기
@@ -138,6 +168,29 @@ function RecipeManager() {
     }
   };
 
+  // ---- 선행 단계 편집 (병렬 조리) ----
+  const startEditDeps = (s: Step) => {
+    setEditingDepsId(s.id);
+    setDraftDeps(s.dependsOn);
+  };
+
+  const toggleDraftDep = (id: number) => {
+    setDraftDeps((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const saveDeps = async () => {
+    if (detail === null || editingDepsId === null) return;
+    const ok = await call(`/api/recipes/${detail.id}/steps/${editingDepsId}/dependencies`, "PUT", {
+      dependsOnStepIds: draftDeps,
+    });
+    if (ok) setEditingDepsId(null);
+  };
+
+  const orderOf = (id: number) => detail?.steps.find((x) => x.id === id)?.order;
+
+  // 간트 차트 1분당 픽셀 (전체가 약 600px 안에 들어오게)
+  const pxPerMinute = schedule && schedule.totalMinutes > 0 ? Math.min(12, 600 / schedule.totalMinutes) : 12;
+
   return (
     <div>
       <h1>레시피 관리</h1>
@@ -188,6 +241,7 @@ function RecipeManager() {
                 <th>시간(분)</th>
                 <th>온도(°C)</th>
                 <th>재료</th>
+                <th>선행 단계</th>
                 <th>작업</th>
               </tr>
             </thead>
@@ -203,6 +257,37 @@ function RecipeManager() {
                     {s.inputs.length === 0
                       ? "-"
                       : s.inputs.map((i) => `${i.ingredientName} ${i.quantity}${i.unit}`).join(", ")}
+                  </td>
+                  <td>
+                    {editingDepsId === s.id ? (
+                      <div style={{ textAlign: "left" }}>
+                        {detail.steps
+                          .filter((o) => o.id !== s.id)
+                          .map((o) => (
+                            <label key={o.id} style={{ display: "block", whiteSpace: "nowrap" }}>
+                              <input
+                                type="checkbox"
+                                checked={draftDeps.includes(o.id)}
+                                onChange={() => toggleDraftDep(o.id)}
+                              />
+                              {o.order}. {o.action}
+                            </label>
+                          ))}
+                        <button disabled={busy} onClick={saveDeps}>저장</button>
+                        <button onClick={() => setEditingDepsId(null)}>취소</button>
+                      </div>
+                    ) : (
+                      <>
+                        {s.dependsOn.length === 0
+                          ? "바로 시작"
+                          : s.dependsOn
+                              .map((id) => orderOf(id))
+                              .sort((a, b) => (a ?? 0) - (b ?? 0))
+                              .join(", ") + "번 후"}
+                        <br />
+                        <button disabled={busy} onClick={() => startEditDeps(s)}>변경</button>
+                      </>
+                    )}
                   </td>
                   <td>
                     <button
@@ -228,6 +313,71 @@ function RecipeManager() {
               ))}
             </tbody>
           </table>
+
+          {schedule && schedule.steps.length > 0 && (
+            <div style={{ margin: "24px 0", textAlign: "left" }}>
+              <h3 style={{ textAlign: "center" }}>조리 흐름 — 동시에 진행해서 한 요리로 완성</h3>
+              <p style={{ textAlign: "center" }}>
+                동시에 진행하면 <b>{schedule.totalMinutes}분</b> 만에 완성
+                {schedule.sequentialMinutes > schedule.totalMinutes && (
+                  <> (하나씩 하면 {schedule.sequentialMinutes}분 → <b>{schedule.sequentialMinutes - schedule.totalMinutes}분 단축</b>)</>
+                )}
+              </p>
+
+              {schedule.steps.map((st) => (
+                <div key={st.id} style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+                  <div style={{ width: 170, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {st.order}. {st.action}
+                  </div>
+                  <div style={{ position: "relative", height: 22, width: schedule.totalMinutes * pxPerMinute + 60 }}>
+                    <div
+                      title={`${st.machineName} · ${st.startMinute}~${st.endMinute}분`}
+                      style={{
+                        position: "absolute",
+                        left: st.startMinute * pxPerMinute,
+                        width: Math.max(st.durationMinutes * pxPerMinute, 4),
+                        height: "100%",
+                        background: colorOf(st.machineId),
+                        borderRadius: 3,
+                      }}
+                    />
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: st.endMinute * pxPerMinute + 4,
+                        fontSize: 11,
+                        lineHeight: "22px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {st.machineName} {st.startMinute}~{st.endMinute}분
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              <div style={{ display: "flex", alignItems: "center", marginTop: 6 }}>
+                <div style={{ width: 170, fontSize: 13, fontWeight: "bold" }}>🍽 완성</div>
+                <div style={{ position: "relative", height: 22 }}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: schedule.totalMinutes * pxPerMinute,
+                      width: 2,
+                      height: "100%",
+                      background: "#333",
+                    }}
+                  />
+                  <span style={{ position: "absolute", left: schedule.totalMinutes * pxPerMinute + 6, fontSize: 12, whiteSpace: "nowrap", lineHeight: "22px" }}>
+                    {schedule.totalMinutes}분
+                  </span>
+                </div>
+              </div>
+              <p style={{ fontSize: 12, color: "#666" }}>
+                같은 시간대에 막대가 겹치면 동시에 진행되는 단계입니다. 같은 기계는 한 번에 한 단계만 쓸 수 있어요.
+              </p>
+            </div>
+          )}
 
           <h3>단계 추가</h3>
           <form onSubmit={handleAddStep}>
