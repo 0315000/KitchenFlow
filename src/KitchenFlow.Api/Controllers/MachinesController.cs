@@ -122,7 +122,7 @@ namespace KitchenFlow.Api.Controllers
             return NoContent();
         }
 
-        private static readonly string[] AllowedKinds = { "Oven", "Mixer", "Fridge" };
+        private static readonly string[] AllowedKinds = { "Oven", "Mixer", "Fridge", "Induction", "Scale" };
 
         private async Task<string?> ValidateAsync(Machine machine, int? excludingId = null)
         {
