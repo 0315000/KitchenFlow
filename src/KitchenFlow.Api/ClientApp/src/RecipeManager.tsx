@@ -50,6 +50,44 @@ type RecipeDetail = { id: number; name: string; steps: Step[] };
 
 type MachineOption = { id: number; name: string };
 
+// T5: 실행 전 검사 결과 (POST /api/recipes/{id}/validate)
+type Violation = {
+  code: string;
+  message: string;
+  stepId: number | null; // 레시피 전체 위반(빈 레시피)은 null
+  order: number | null;
+};
+
+type ValidationResult = { recipeId: number; isValid: boolean; violations: Violation[] };
+
+// 배지에 보여 줄 짧은 이름 (전체 설명은 마우스를 올리면 보인다)
+const violationLabels: Record<string, string> = {
+  EMPTY_RECIPE: "빈 레시피",
+  INVALID_DURATION: "소요시간",
+  OUT_OF_STOCK: "재고 부족",
+  UNKNOWN_MACHINE: "없는 기계",
+  OVER_CAPACITY: "용량 초과",
+  TEMP_OUT_OF_RANGE: "온도 범위",
+};
+
+// 빨간 배지 한 개
+const ViolationBadge = ({ v }: { v: Violation }) => (
+  <span
+    title={v.message}
+    style={{
+      display: "inline-block",
+      margin: 2,
+      padding: "2px 8px",
+      borderRadius: 10,
+      background: "#d93025",
+      color: "white",
+      fontSize: 12,
+      whiteSpace: "nowrap",
+    }}
+  >
+    {violationLabels[v.code] ?? v.code}
+  </span>
+);
 const emptyStepForm = { machineId: 0, action: "", durationMinutes: 1, tempC: "" };
 
 function RecipeManager() {
@@ -64,6 +102,7 @@ function RecipeManager() {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [editingDepsId, setEditingDepsId] = useState<number | null>(null);
   const [draftDeps, setDraftDeps] = useState<number[]>([]);
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
 
   const fetchRecipes = async () => {
     const res = await fetch("/api/recipes");
@@ -75,11 +114,14 @@ function RecipeManager() {
     if (!res.ok) {
       setDetail(null);
       setSchedule(null);
+      setValidation(null);
       return;
     }
     setDetail(await res.json());
     const scheduleRes = await fetch(`/api/recipes/${id}/schedule`);
     setSchedule(scheduleRes.ok ? await scheduleRes.json() : null);
+    const validateRes = await fetch(`/api/recipes/${id}/validate`, { method: "POST" });
+    setValidation(validateRes.ok ? await validateRes.json() : null);
   };
 
   useEffect(() => {
@@ -87,7 +129,7 @@ function RecipeManager() {
     fetch("/api/machines")
       .then((r) => r.json())
       .then((data: MachineOption[]) => setMachines(data));
-  }, []);
+  }, [selectedId]);
 
   useEffect(() => {
     if (selectedId !== null) {
@@ -95,6 +137,7 @@ function RecipeManager() {
     } else {
       setDetail(null);
       setSchedule(null);
+      setValidation(null);
     }
     setEditingDepsId(null);
   }, [selectedId]);
@@ -231,7 +274,20 @@ function RecipeManager() {
       {detail && (
         <div>
           <h2>{detail.name} — 조리 단계</h2>
-
+          {validation && (
+            <p>
+              {validation.isValid ? (
+                <span style={{ color: "green" }}>✔ 실행 가능한 레시피</span>
+              ) : (
+                <>
+                  <b style={{ color: "#d93025" }}>실행 불가 — 위반 {validation.violations.length}건</b>{" "}
+                  {validation.violations
+                    .filter((v) => v.stepId === null)
+                    .map((v, i) => <ViolationBadge key={i} v={v} />)}
+                </>
+              )}
+            </p>
+          )}
           <table border={1} cellPadding={6} style={{ borderCollapse: "collapse", marginBottom: 16 }}>
             <thead>
               <tr>
@@ -242,6 +298,7 @@ function RecipeManager() {
                 <th>온도(°C)</th>
                 <th>재료</th>
                 <th>선행 단계</th>
+                <th>검사</th>
                 <th>작업</th>
               </tr>
             </thead>
@@ -288,6 +345,14 @@ function RecipeManager() {
                         <button disabled={busy} onClick={() => startEditDeps(s)}>변경</button>
                       </>
                     )}
+                  </td>
+                  <td>
+                    {(() => {
+                      const mine = validation?.violations.filter((v) => v.stepId === s.id) ?? [];
+                      return mine.length === 0
+                        ? <span style={{ color: "green" }}>✔</span>
+                        : mine.map((v, i) => <ViolationBadge key={i} v={v} />);
+                    })()}
                   </td>
                   <td>
                     <button
