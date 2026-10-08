@@ -42,10 +42,19 @@ type Schedule = {
   sequentialMinutes: number;
   steps: ScheduledStep[];
 };
-
+// T6: 순차 실행 시뮬레이션 (POST /api/recipes/{id}/simulate)
+type TimelineEntry = {
+  stepId: number;    // 어느 단계인지 (Step의 Id)
+  startMin: number;  // 몇 분에 시작하나
+  endMin: number;    // 몇 분에 끝나나
+};
 const machineColors = ["#4e79a7", "#f28e2b", "#59a14f", "#e15759", "#76b7b2", "#b07aa1", "#edc948"];
 const colorOf = (machineId: number) => machineColors[machineId % machineColors.length];
-
+// 12.5분 → "12:30" (분:초)
+const formatMin = (min: number) => {
+  const totalSec = Math.floor(min * 60);
+  return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, "0")}`;
+};
 type RecipeDetail = { id: number; name: string; steps: Step[] };
 
 type MachineOption = { id: number; name: string };
@@ -103,7 +112,11 @@ function RecipeManager() {
   const [editingDepsId, setEditingDepsId] = useState<number | null>(null);
   const [draftDeps, setDraftDeps] = useState<number[]>([]);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
-
+  const [timeline, setTimeline] = useState<TimelineEntry[] | null>(null);
+  // T6 재생: 지금 몇 분째인지 / 재생 중인지 / 배속 (서버가 아니라 화면이 기억한다 — DP4 결정 B)
+  const [currentMin, setCurrentMin] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(60);
   const fetchRecipes = async () => {
     const res = await fetch("/api/recipes");
     setRecipes(await res.json());
@@ -115,6 +128,7 @@ function RecipeManager() {
       setDetail(null);
       setSchedule(null);
       setValidation(null);
+      setTimeline(null);
       return;
     }
     setDetail(await res.json());
@@ -122,6 +136,8 @@ function RecipeManager() {
     setSchedule(scheduleRes.ok ? await scheduleRes.json() : null);
     const validateRes = await fetch(`/api/recipes/${id}/validate`, { method: "POST" });
     setValidation(validateRes.ok ? await validateRes.json() : null);
+    const simulateRes = await fetch(`/api/recipes/${id}/simulate`, { method: "POST" });
+    setTimeline(simulateRes.ok ? await simulateRes.json() : null);
   };
 
   useEffect(() => {
@@ -138,8 +154,11 @@ function RecipeManager() {
       setDetail(null);
       setSchedule(null);
       setValidation(null);
+      setTimeline(null);
     }
     setEditingDepsId(null);
+    setPlaying(false);
+    setCurrentMin(0);
   }, [selectedId]);
 
   // 공통 호출: 연타 방지 + 서버 에러 메시지 표시 + 목록/상세 다시 불러오기
@@ -233,7 +252,24 @@ function RecipeManager() {
 
   // 간트 차트 1분당 픽셀 (전체가 약 600px 안에 들어오게)
   const pxPerMinute = schedule && schedule.totalMinutes > 0 ? Math.min(12, 600 / schedule.totalMinutes) : 12;
-
+  // T6 순차 시뮬레이션: 총 소요시간 = 마지막 단계의 끝 시각
+  const simTotal = timeline && timeline.length > 0 ? timeline[timeline.length - 1].endMin : 0;
+  const simPx = simTotal > 0 ? Math.min(12, 600 / simTotal) : 12;
+  // T6 재생: 재생 중이면 0.1초마다 (흐른 시간 × 배속)만큼 커서를 앞으로
+  useEffect(() => {
+    if (!playing) return;                        // 멈춤이면 타이머를 켜지 않음
+    const timer = setInterval(() => {
+      setCurrentMin((prev) => {
+        const next = prev + (0.1 * speed) / 60;  // 0.1초 동안 흐른 "레시피 분"
+        if (next >= simTotal) {                  // 끝까지 갔으면
+          setPlaying(false);                     //   멈추고
+          return simTotal;                       //   커서는 마지막 시각에 고정
+        }
+        return next;
+      });
+    }, 100);                                     // 100ms = 0.1초마다 실행
+    return () => clearInterval(timer);           // 멈추거나 배속이 바뀌면 이전 타이머 정리
+  }, [playing, speed, simTotal]);
   return (
     <div>
       <h1>레시피 관리</h1>
@@ -441,6 +477,88 @@ function RecipeManager() {
               <p style={{ fontSize: 12, color: "#666" }}>
                 같은 시간대에 막대가 겹치면 동시에 진행되는 단계입니다. 같은 기계는 한 번에 한 단계만 쓸 수 있어요.
               </p>
+            </div>
+          )}
+          {timeline && timeline.length > 0 && (
+            <div style={{ margin: "24px 0", textAlign: "left" }}>
+              <h3 style={{ textAlign: "center" }}>순차 실행 시뮬레이션 — 한 단계씩 차례로</h3>
+              <p style={{ textAlign: "center" }}>
+                총 <b>{simTotal}분</b> (단계 소요시간의 합)
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                {playing ? (
+                  <button onClick={() => setPlaying(false)}>⏸ 일시정지</button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (currentMin >= simTotal) setCurrentMin(0); // 끝난 뒤 다시 누르면 처음부터
+                      setPlaying(true);
+                    }}
+                  >
+                    ▶ 재생
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setPlaying(false);
+                    setCurrentMin(0);
+                  }}
+                >
+                  ↺ 처음으로
+                </button>
+                <span style={{ marginLeft: 8 }}>배속</span>
+                {[1, 10, 60].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setSpeed(s)}
+                    style={s === speed ? { fontWeight: "bold", background: "#333", color: "white" } : undefined}
+                  >
+                    {s}x
+                  </button>
+                ))}
+                <span style={{ marginLeft: 8 }}>
+                  <b>{formatMin(currentMin)}</b> / {formatMin(simTotal)}
+                </span>
+              </div>
+              <div style={{ position: "relative" }}>
+                {timeline.map((t) => {
+                  const step = detail.steps.find((s) => s.id === t.stepId);
+                  return (
+                    <div key={t.stepId} style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+                      <div style={{ width: 170, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {step?.order}. {step?.action}
+                      </div>
+                      <div style={{ position: "relative", height: 22, width: simTotal * simPx + 60 }}>
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: t.startMin * simPx,
+                            width: (t.endMin - t.startMin) * simPx,
+                            height: "100%",
+                            background: colorOf(step?.machineId ?? 0),
+                            borderRadius: 3,
+                          }}
+                        />
+                        <span style={{ position: "absolute", left: t.endMin * simPx + 4, fontSize: 11, lineHeight: "22px", whiteSpace: "nowrap" }}>
+                          {step?.machineName} {t.startMin}~{t.endMin}분
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* 현재 시각 커서 */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: 170 + currentMin * simPx,
+                    width: 2,
+                    background: "#d93025",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
             </div>
           )}
 
