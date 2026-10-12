@@ -339,7 +339,8 @@ namespace KitchenFlow.Api.Controllers
                 Violations = violations
             });
         }
-        // POST /api/recipes/{id}/simulate : 순차 실행 시뮬레이션 (T6)
+        // POST /api/recipes/{id}/simulate : 의존관계 기반 시뮬레이션 (T6 → T7)
+        // 선행 단계가 없는 단계는 0분에 동시에 시작한다. 순환이 있으면 400.
         // 실제로 돌리지 않고 "언제 무엇이 일어나는지"만 한 번에 계산해서 돌려준다. (DP4 결정 B)
         [HttpPost("{id}/simulate")]
         public async Task<IActionResult> SimulateRecipe(int id)
@@ -352,11 +353,19 @@ namespace KitchenFlow.Api.Controllers
             // ① DB → 계산 함수 입력으로 옮겨 담기
             var steps = await _context.Steps
                 .Where(s => s.RecipeId == id)
-                .Select(s => new SimulationStep(s.Id, s.Order, s.DurationMinutes))
+                .Select(s => new SimulationStep(
+                    s.Id,
+                    s.Order,
+                    s.DurationMinutes,
+                    s.DependsOn.Select(d => d.DependsOnStepId).ToList()))   // 선행 단계 Id 목록
                 .ToListAsync();
 
             // ② 계산은 순수 함수에게
             var timeline = RecipeSimulator.Simulate(steps);
+            if (timeline == null)
+            {
+                return BadRequest("선행 단계에 순환이 있어 시뮬레이션할 수 없습니다.");
+            }
 
             return Ok(timeline);
         }
