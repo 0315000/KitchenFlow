@@ -318,7 +318,8 @@ namespace KitchenFlow.Api.Controllers
                     s.MachineId,
                     s.DurationMinutes,
                     s.TempC,
-                    s.Inputs.Select(i => new ValidationInput(i.IngredientId, i.Quantity)).ToList()))
+                    s.Inputs.Select(i => new ValidationInput(i.IngredientId, i.Quantity)).ToList(),
+                    s.DependsOn.Select(d => d.DependsOnStepId).ToList()))   // T7: 선행 단계 Id 목록 (순환 검사용)
                 .ToListAsync();
 
             var machines = await _context.Machines.ToDictionaryAsync(
