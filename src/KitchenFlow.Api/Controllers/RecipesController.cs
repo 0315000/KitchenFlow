@@ -339,6 +339,27 @@ namespace KitchenFlow.Api.Controllers
                 Violations = violations
             });
         }
+        // POST /api/recipes/{id}/simulate : 순차 실행 시뮬레이션 (T6)
+        // 실제로 돌리지 않고 "언제 무엇이 일어나는지"만 한 번에 계산해서 돌려준다. (DP4 결정 B)
+        [HttpPost("{id}/simulate")]
+        public async Task<IActionResult> SimulateRecipe(int id)
+        {
+            if (!await _context.Recipes.AnyAsync(r => r.Id == id))
+            {
+                return NotFound("해당 레시피를 찾을 수 없습니다.");
+            }
+
+            // ① DB → 계산 함수 입력으로 옮겨 담기
+            var steps = await _context.Steps
+                .Where(s => s.RecipeId == id)
+                .Select(s => new SimulationStep(s.Id, s.Order, s.DurationMinutes))
+                .ToListAsync();
+
+            // ② 계산은 순수 함수에게
+            var timeline = RecipeSimulator.Simulate(steps);
+
+            return Ok(timeline);
+        }
 
         // GET /api/recipes/{id}/schedule : 조리 흐름 계산
         // 여러 단계를 동시에 진행해서 한 요리로 완성되기까지의 시작/종료 시각

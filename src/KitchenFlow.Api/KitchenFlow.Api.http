@@ -40,3 +40,17 @@ POST {{KitchenFlow_Api_HostAddress}}/api/recipes/1/validate
 
 ### ── T5 실행 전 검사: 없는 레시피 → 404
 POST {{KitchenFlow_Api_HostAddress}}/api/recipes/999/validate
+### ── T6 순차: 라면 (0~5, 5~6, 6~10)
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/1/simulate
+
+### ── T6 순차: 야채볶음 (6단계)
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/2/simulate
+
+### ── T6 순차: 로스트치킨 (12단계)
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/3/simulate
+
+### ── T6 순차: 없는 레시피 → 404
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/999/simulate
+
+### ── 비교: T4 병렬 스케줄 (야채볶음)
+GET {{KitchenFlow_Api_HostAddress}}/api/recipes/2/schedule
