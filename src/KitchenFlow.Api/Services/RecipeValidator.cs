@@ -9,7 +9,8 @@ namespace KitchenFlow.Api.Services
         int MachineId,
         int DurationMinutes,
         int? TempC,
-        IReadOnlyList<ValidationInput> Inputs);
+        IReadOnlyList<ValidationInput> Inputs,
+        IReadOnlyList<int>? DependsOn = null);   // T7: 선행 단계 Id 목록 (안 넘기면 선행 없음)
 
     public record ValidationMachine(int Id, string Name, int CapacityMl, int MinTempC, int MaxTempC, bool IsAvailable);
 
@@ -104,6 +105,17 @@ namespace KitchenFlow.Api.Services
                         $"{step.Order}단계: {temp}°C는 {machine.Name}의 허용 범위({machine.MinTempC}~{machine.MaxTempC}°C) 밖입니다.",
                         step.StepId, step.Order));
                 }
+            }
+
+            // ⑦ 순환 (T7) — 선행 단계가 서로를 기다려서 영원히 시작할 수 없는 레시피
+            //  - 순환 판단은 RecipeSimulator(위상정렬)를 재사용한다: 순환이면 null, 무한루프 없음
+            //  - 단계 하나가 아니라 레시피 전체의 문제라서 StepId / Order 는 null
+            var asSimulation = steps
+                .Select(s => new SimulationStep(s.StepId, s.Order, s.DurationMinutes, s.DependsOn ?? []))
+                .ToList();
+            if (RecipeSimulator.Simulate(asSimulation) == null)
+            {
+                violations.Add(new Violation("CYCLE", "선행 단계가 서로를 기다리는 순환이 있습니다."));
             }
 
             return violations;   // return 은 맨 마지막 한 번만

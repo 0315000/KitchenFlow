@@ -252,10 +252,11 @@ function RecipeManager() {
 
   // 간트 차트 1분당 픽셀 (전체가 약 600px 안에 들어오게)
   const pxPerMinute = schedule && schedule.totalMinutes > 0 ? Math.min(12, 600 / schedule.totalMinutes) : 12;
-  // T6 순차 시뮬레이션: 총 소요시간 = 마지막 단계의 끝 시각
-  const simTotal = timeline && timeline.length > 0 ? timeline[timeline.length - 1].endMin : 0;
+  // T7 의존관계 시뮬레이션: 총 소요시간 = 가장 늦게 끝나는 단계의 끝 시각
+  // (병렬이면 배열의 마지막 항목이 가장 늦게 끝난다는 보장이 없다)
+  const simTotal = timeline && timeline.length > 0 ? Math.max(...timeline.map((t) => t.endMin)) : 0;
   const simPx = simTotal > 0 ? Math.min(12, 600 / simTotal) : 12;
-  // T6 재생: 재생 중이면 0.1초마다 (흐른 시간 × 배속)만큼 커서를 앞으로
+  // T6 재생: 재생 중이면 0.1초마다z (흐른 시간 × 배속)만큼 커서를 앞으로
   useEffect(() => {
     if (!playing) return;                        // 멈춤이면 타이머를 켜지 않음
     const timer = setInterval(() => {
@@ -481,9 +482,9 @@ function RecipeManager() {
           )}
           {timeline && timeline.length > 0 && (
             <div style={{ margin: "24px 0", textAlign: "left" }}>
-              <h3 style={{ textAlign: "center" }}>순차 실행 시뮬레이션 — 한 단계씩 차례로</h3>
+             <h3 style={{ textAlign: "center" }}>의존관계 시뮬레이션 — 선행 단계가 끝나면 시작</h3>
               <p style={{ textAlign: "center" }}>
-                총 <b>{simTotal}분</b> (단계 소요시간의 합)
+                완성까지 <b>{simTotal}분</b> (선행이 없는 단계는 동시에 시작)
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {playing ? (
@@ -525,7 +526,8 @@ function RecipeManager() {
                   const step = detail.steps.find((s) => s.id === t.stepId);
                   return (
                     <div key={t.stepId} style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
-                      <div style={{ width: 170, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {/* flexShrink: 0 — 총 시간이 길어 줄이 넘쳐도 이름 칸은 170px 그대로 (커서 위치 170 + 분 × simPx 와 맞춤) */}
+                      <div style={{ width: 170, flexShrink: 0, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {step?.order}. {step?.action}
                       </div>
                       <div style={{ position: "relative", height: 22, width: simTotal * simPx + 60 }}>
