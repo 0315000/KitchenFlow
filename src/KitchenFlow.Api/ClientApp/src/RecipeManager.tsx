@@ -256,7 +256,7 @@ function RecipeManager() {
   // T7 의존관계 시뮬레이션: 총 소요시간 = 가장 늦게 끝나는 단계의 끝 시각
   // (병렬이면 배열의 마지막 항목이 가장 늦게 끝난다는 보장이 없다)
   const simTotal = timeline && timeline.length > 0 ? Math.max(...timeline.map((t) => t.endMin)) : 0;
-  const simPx = simTotal > 0 ? Math.min(12, 600 / simTotal) : 12;
+  const simPx = simTotal > 0 ? 600 / simTotal : 12; // T8: 레시피 길이와 상관없이 간트 폭을 600px 로 맞춘다 (짧은 레시피도 막대 이름이 보이게)
   // T8: 기계별 레인 — 같은 기계를 쓰는 단계들을 한 줄에 모은다 (기계가 처음 나온 순서대로)
   const lanes = timeline
     ? [...new Set(timeline.map((t) => t.machineId))].map((machineId) => ({
@@ -264,6 +264,23 @@ function RecipeManager() {
         entries: timeline.filter((t) => t.machineId === machineId),
       }))
     : [];
+  // T8: 스코어 — 총 소요시간 / 기계 유휴율 / 재료 낭비량 → 별 3개
+  const endOfStep = new Map((timeline ?? []).map((t) => [t.stepId, t.endMin])); // 단계 Id → 끝 시각
+  // ① 총 소요시간: 순차 실행(모든 단계 시간 합) 대비 얼마나 줄었나
+  const seqTotal = detail ? detail.steps.reduce((sum, s) => sum + s.durationMinutes, 0) : 0;
+  const shortenPct = seqTotal > 0 ? Math.round((1 - simTotal / seqTotal) * 100) : 0;
+  // ② 기계 유휴율: 쓰는 기계들의 전체 시간 중 놀고 있는 비율
+  const busyTotal = (timeline ?? []).reduce((sum, t) => sum + (t.endMin - t.startMin), 0);
+  const idlePct = lanes.length > 0 && simTotal > 0 ? Math.round((1 - busyTotal / (lanes.length * simTotal)) * 100) : 0;
+  // ③ 재료 낭비량: 재료가 들어간 단계가 준비된 뒤 기계를 기다린 시간 합 (손질한 재료가 방치된 시간)
+  const wasteMin = (timeline ?? []).reduce((sum, t) => {
+    const step = detail?.steps.find((s) => s.id === t.stepId);
+    if (!step || step.inputs.length === 0) return sum;                            // 재료가 없는 단계는 제외
+    const readyAt = Math.max(0, ...step.dependsOn.map((d) => endOfStep.get(d) ?? 0)); // 선행이 다 끝난 시각
+    return sum + (t.startMin - readyAt);                                           // 준비됐는데 기다린 시간
+  }, 0);
+  // 별: 기준을 통과한 개수 (단축률 20% 이상 / 유휴율 30% 이하 / 방치 0분)
+  const stars = [shortenPct >= 20, idlePct <= 30, wasteMin === 0].filter(Boolean).length;
   // T6 재생: 재생 중이면 0.1초마다z (흐른 시간 × 배속)만큼 커서를 앞으로
   useEffect(() => {
     if (!playing) return;                        // 멈춤이면 타이머를 켜지 않음
@@ -494,6 +511,14 @@ function RecipeManager() {
               <p style={{ textAlign: "center" }}>
                 완성까지 <b>{simTotal}분</b> (선행이 없는 단계는 동시에 시작)
               </p>
+              {/* T8: 스코어 — 기준 통과 개수만큼 ★ (마우스를 올리면 기준 설명) */}
+              <p
+                style={{ textAlign: "center" }}
+                title="★ 단축률 20% 이상 / ★ 기계 유휴율 30% 이하 / ★ 재료 방치 0분"
+              >
+                스코어 <b style={{ color: "#f2a900", fontSize: 18 }}>{"★".repeat(stars)}{"☆".repeat(3 - stars)}</b>{" "}
+                · 총 {simTotal}분 (순차 {seqTotal}분 대비 {shortenPct}% 단축) · 기계 유휴율 {idlePct}% · 재료 방치 {wasteMin}분
+              </p>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {playing ? (
                   <button onClick={() => setPlaying(false)}>⏸ 일시정지</button>
@@ -539,7 +564,7 @@ function RecipeManager() {
                         {machineName}
                       </div>
                       {/* 회색 바탕 = 기계가 놀고 있는(유휴) 시간, 색 막대 = 일하는 시간 */}
-                      <div style={{ position: "relative", height: 22, width: simTotal * simPx, background: "#eee", borderRadius: 3 }}>
+                      <div style={{ position: "relative", height: 22, width: simTotal * simPx, flexShrink: 0, background: "#eee", borderRadius: 3 }}>
                         {lane.entries.map((t) => {
                           const step = detail.steps.find((s) => s.id === t.stepId);
                           return (
