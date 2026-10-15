@@ -232,7 +232,8 @@ function App() {
   };
 
   const isExpired = (expiryDate: string) => expiryDate.slice(0, 10) < todayIso();
-  const isLowStock = (item: InventoryItem) => item.quantity < item.threshold;
+  const isOutOfStock = (item: InventoryItem) => item.quantity <= 0;                                // 다 떨어짐
+  const isLowStock = (item: InventoryItem) => item.quantity > 0 && item.quantity < item.threshold; // 남았지만 기준보다 적음
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
@@ -355,6 +356,15 @@ function App() {
             onChange={handleInvChange}
           />
         </div>
+        <div>
+          <label>부족 기준: </label>
+          <input
+            name="threshold"
+            type="number"
+            value={invForm.threshold}
+            onChange={handleInvChange}
+          />
+        </div>
 
         {invErrorMessage && (
           <p style={{ color: "red" }}>{invErrorMessage}</p>
@@ -386,11 +396,14 @@ function App() {
           {inventoryItems.map((i) => (
             <tr key={i.id}>
               <td>{i.itemName}</td>
-              <td>{i.quantity}</td>
+              <td>{i.quantity}{i.threshold > 0 && <span style={{ color: "#888" }}> / 기준 {i.threshold}</span>}</td>
               <td>{i.expiryDate.slice(0, 10)}</td>
               <td>
                 {isExpired(i.expiryDate) && (
                   <span style={{ color: "red" }}>유통기한 지남 </span>
+                )}
+                {isOutOfStock(i) && (
+                  <span style={{ color: "red", fontWeight: "bold" }}>재고 없음 </span>
                 )}
                 {isLowStock(i) && (
                   <span style={{ color: "orange" }}>재고 부족</span>

@@ -437,7 +437,11 @@ function RecipeManager() {
                     </button>
                     <button
                       disabled={busy}
-                      onClick={() => call(`/api/recipes/${detail.id}/steps/${s.id}`, "DELETE")}
+                      onClick={() => {
+                        // 실수로 지우지 않도록 한 번 확인한다 (레시피 삭제와 같은 방식)
+                        if (!window.confirm(`${s.order}번 "${s.action}" 단계를 삭제할까요?`)) return;
+                        call(`/api/recipes/${detail.id}/steps/${s.id}`, "DELETE");
+                      }}
                     >
                       삭제
                     </button>
