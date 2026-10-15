@@ -44,6 +44,7 @@ type Schedule = {
 };
 // T6: 순차 실행 시뮬레이션 (POST /api/recipes/{id}/simulate)
 type TimelineEntry = {
+  machineId: number; // T8: 어느 기계에서 하는지 (기계별 레인용)
   stepId: number;    // 어느 단계인지 (Step의 Id)
   startMin: number;  // 몇 분에 시작하나
   endMin: number;    // 몇 분에 끝나나
@@ -256,6 +257,13 @@ function RecipeManager() {
   // (병렬이면 배열의 마지막 항목이 가장 늦게 끝난다는 보장이 없다)
   const simTotal = timeline && timeline.length > 0 ? Math.max(...timeline.map((t) => t.endMin)) : 0;
   const simPx = simTotal > 0 ? Math.min(12, 600 / simTotal) : 12;
+  // T8: 기계별 레인 — 같은 기계를 쓰는 단계들을 한 줄에 모은다 (기계가 처음 나온 순서대로)
+  const lanes = timeline
+    ? [...new Set(timeline.map((t) => t.machineId))].map((machineId) => ({
+        machineId,
+        entries: timeline.filter((t) => t.machineId === machineId),
+      }))
+    : [];
   // T6 재생: 재생 중이면 0.1초마다z (흐른 시간 × 배속)만큼 커서를 앞으로
   useEffect(() => {
     if (!playing) return;                        // 멈춤이면 타이머를 켜지 않음
@@ -522,28 +530,43 @@ function RecipeManager() {
                 </span>
               </div>
               <div style={{ position: "relative" }}>
-                {timeline.map((t) => {
-                  const step = detail.steps.find((s) => s.id === t.stepId);
+                {lanes.map((lane) => {
+                  const machineName = detail.steps.find((s) => s.machineId === lane.machineId)?.machineName;
                   return (
-                    <div key={t.stepId} style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
-                      {/* flexShrink: 0 — 총 시간이 길어 줄이 넘쳐도 이름 칸은 170px 그대로 (커서 위치 170 + 분 × simPx 와 맞춤) */}
-                      <div style={{ width: 170, flexShrink: 0, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {step?.order}. {step?.action}
+                    <div key={lane.machineId} style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+                      {/* 왼쪽 이름 칸: 단계 이름 대신 기계 이름 */}
+                      <div style={{ width: 170, flexShrink: 0, fontSize: 13, fontWeight: "bold" }}>
+                        {machineName}
                       </div>
-                      <div style={{ position: "relative", height: 22, width: simTotal * simPx + 60 }}>
-                        <div
-                          style={{
-                            position: "absolute",
-                            left: t.startMin * simPx,
-                            width: (t.endMin - t.startMin) * simPx,
-                            height: "100%",
-                            background: colorOf(step?.machineId ?? 0),
-                            borderRadius: 3,
-                          }}
-                        />
-                        <span style={{ position: "absolute", left: t.endMin * simPx + 4, fontSize: 11, lineHeight: "22px", whiteSpace: "nowrap" }}>
-                          {step?.machineName} {t.startMin}~{t.endMin}분
-                        </span>
+                      {/* 회색 바탕 = 기계가 놀고 있는(유휴) 시간, 색 막대 = 일하는 시간 */}
+                      <div style={{ position: "relative", height: 22, width: simTotal * simPx, background: "#eee", borderRadius: 3 }}>
+                        {lane.entries.map((t) => {
+                          const step = detail.steps.find((s) => s.id === t.stepId);
+                          return (
+                            <div
+                              key={t.stepId}
+                              title={`${step?.order}. ${step?.action} · ${t.startMin}~${t.endMin}분`}
+                              style={{
+                                position: "absolute",
+                                left: t.startMin * simPx,
+                                width: (t.endMin - t.startMin) * simPx,
+                                height: "100%",
+                                background: colorOf(t.machineId),
+                                border: "1px solid white",
+                                boxSizing: "border-box",
+                                borderRadius: 3,
+                                color: "white",
+                                fontSize: 11,
+                                lineHeight: "20px",
+                                overflow: "hidden",
+                                whiteSpace: "nowrap",
+                                paddingLeft: 3,
+                              }}
+                            >
+                              {step?.action}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
