@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // T4: 레시피와 조리 단계 화면
 // - 레시피 목록 / 생성 / 삭제
@@ -123,22 +123,27 @@ function RecipeManager() {
     setRecipes(await res.json());
   };
 
+  // T8 몽키 테스트: 레시피를 빠르게 바꿀 때 늦게 도착한 이전 응답이 화면을 덮어쓰지 않도록,
+  //요청마다 번호표를 주고 가장 최근 번호표의 응답만 화면에 넣는다.
+  const latestDetailRequest = useRef(0);
   const fetchDetail = async (id: number) => {
-    const res = await fetch(`/api/recipes/${id}`);
-    if (!res.ok) {
-      setDetail(null);
-      setSchedule(null);
-      setValidation(null);
-      setTimeline(null);
-      return;
-    }
-    setDetail(await res.json());
-    const scheduleRes = await fetch(`/api/recipes/${id}/schedule`);
-    setSchedule(scheduleRes.ok ? await scheduleRes.json() : null);
-    const validateRes = await fetch(`/api/recipes/${id}/validate`, { method: "POST" });
-    setValidation(validateRes.ok ? await validateRes.json() : null);
-    const simulateRes = await fetch(`/api/recipes/${id}/simulate`, { method: "POST" });
-    setTimeline(simulateRes.ok ? await simulateRes.json() : null);
+    const ticket = ++latestDetailRequest.current; // 이번 요청의 번호표
+
+    // 4개를 동시에 요청하고, 다 모이면 한 번에 화면에 넣는다 (중간에 섞일 틈이 없게)
+    const json = (r: Response) => (r.ok ? r.json() : Promise.resolve(null));
+    const [detailData, scheduleData, validateData, simulateData] = await Promise.all([
+      fetch(`/api/recipes/${id}`).then(json),
+      fetch(`/api/recipes/${id}/schedule`).then(json),
+      fetch(`/api/recipes/${id}/validate`, { method: "POST" }).then(json),
+      fetch(`/api/recipes/${id}/simulate`, { method: "POST" }).then(json),
+    ]);
+
+    if (ticket !== latestDetailRequest.current) return; // 그 사이 다른 레시피를 눌렀으면 이 응답은 버린다
+
+    setDetail(detailData);
+    setSchedule(detailData ? scheduleData : null);
+    setValidation(detailData ? validateData : null);
+    setTimeline(detailData ? simulateData : null);
   };
 
   useEffect(() => {
@@ -152,6 +157,7 @@ function RecipeManager() {
     if (selectedId !== null) {
       fetchDetail(selectedId);
     } else {
+      latestDetailRequest.current++;
       setDetail(null);
       setSchedule(null);
       setValidation(null);
