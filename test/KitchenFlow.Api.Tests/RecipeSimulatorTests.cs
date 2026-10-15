@@ -7,10 +7,18 @@ namespace KitchenFlow.Api.Tests
     // DB 없이 단계와 선행 관계를 직접 만들어 넣고 결과만 본다. (T5 와 같은 방식)
     public class RecipeSimulatorTests
     {
-        // 단계 하나를 만든다. StepId 와 Order 는 같은 값으로 둔다.
+        // 단계 하나를 만든다. StepId, Order, MachineId 는 같은 값으로 둔다. (단계마다 기계가 달라 경합 없음)
         // 예: Step(3, 5, 1, 2) → 3번 단계, 5분, 1번·2번이 끝나야 시작
         private static SimulationStep Step(int id, int duration, params int[] dependsOn)
-            => new(id, id, duration, dependsOn);
+            => new(id, id, id, duration, dependsOn);
+
+        // 기계를 직접 정하는 단계. 같은 machine 을 주면 기계 경합이 생긴다.
+        // 예: OnMachine(1, Oven, 40) → 1번 단계, 오븐, 40분, 선행 없음
+        private static SimulationStep OnMachine(int id, int machine, int duration, params int[] dependsOn)
+            => new(machine, id, id, duration, dependsOn);
+
+        private const int Oven = 1;
+        private const int Induction = 4;
 
         // 결과를 "단계 Id → (시작, 끝)" 사전으로 바꿔서 꺼내 보기 쉽게 한다.
         private static Dictionary<int, (int start, int end)> Run(params SimulationStep[] steps)
@@ -98,6 +106,36 @@ namespace KitchenFlow.Api.Tests
             Assert.Equal(0, t[6].start);
             Assert.Equal(3, t[7].start);                // 4(~2분)와 6(~3분)이 둘 다 끝난 뒤
             Assert.Equal(11, t.Values.Max(x => x.end));  // 총 소요시간 (순차로 하면 15분)
+        }
+
+        // ── T8: 기계 경합 ──
+
+        [Fact]
+        public void SameMachine_NoDeps_HigherCriticalFirst()
+        {
+            // 감자(오븐 40), 당근(오븐 15) → 0분에 둘 다 오븐을 원한다
+            var t = Run(
+                OnMachine(1, Oven, 40),
+                OnMachine(2, Oven, 15));
+
+            Assert.Equal((0, 40), t[1]);    // 임계경로 40 > 15 → 감자 먼저
+            Assert.Equal((40, 55), t[2]);   // 오븐이 빌 때까지 대기 → 40분 시작
+        }
+
+        [Fact]
+        public void ShortStepWithLongTail_GoesFirst()
+        {
+            // 감자(오븐 40), 닭(오븐 15) → 닭 뒤에 소스(인덕션 30)가 이어진다
+            // 임계경로: 감자 40, 닭 15 + 30 = 45 → 단계 하나는 짧아도 닭이 먼저
+            var t = Run(
+                OnMachine(1, Oven, 40),
+                OnMachine(2, Oven, 15),
+                OnMachine(3, Induction, 30, 2));
+
+            Assert.Equal((0, 15), t[2]);    // 닭이 먼저 오븐에 들어간다 (규칙 1)
+            Assert.Equal((15, 55), t[1]);   // 감자는 오븐이 빌 때까지 대기
+            Assert.Equal((15, 45), t[3]);   // 소스는 닭이 끝나자마자 인덕션에서 시작
+            Assert.Equal(55, t.Values.Max(x => x.end));   // 총 55분 (감자 먼저였다면 85분)
         }
     }
 }
