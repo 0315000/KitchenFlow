@@ -111,7 +111,7 @@ namespace KitchenFlow.Api.Services
             //  - 순환 판단은 RecipeSimulator(위상정렬)를 재사용한다: 순환이면 null, 무한루프 없음
             //  - 단계 하나가 아니라 레시피 전체의 문제라서 StepId / Order 는 null
             var asSimulation = steps
-                .Select(s => new SimulationStep(s.StepId, s.Order, s.DurationMinutes, s.DependsOn ?? []))
+                .Select(s => new SimulationStep(s.MachineId,s.StepId, s.Order, s.DurationMinutes, s.DependsOn??[]))
                 .ToList();
             if (RecipeSimulator.Simulate(asSimulation) == null)
             {
