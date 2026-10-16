@@ -108,6 +108,23 @@ namespace KitchenFlow.Api.Services
             // ⑥ 실패 기록은 트랜잭션 밖에서 — 안에서 저장하면 롤백할 때 기록까지 같이 사라진다
             return await SaveFailedAsync(run, shortage);
         }
+
+        // 할 일 3: 레시피의 실행 이력 (최신순). 레시피가 없으면 null
+        public async Task<List<Run>?> GetRunsAsync(int recipeId)
+        {
+            if (!await _context.Recipes.AnyAsync(r => r.Id == recipeId))
+            {
+                return null;
+            }
+
+            return await _context.Runs
+                .AsNoTracking()
+                .Include(r => r.Events)               // 총 소요시간 계산용
+                .Where(r => r.RecipeId == recipeId)
+                .OrderByDescending(r => r.Id)         // 최신 실행이 위로
+                .ToListAsync();
+        }
+
         // 실패도 Run 으로 남긴다 (완료 조건: "실패로 기록되고 재고는 그대로")
         private async Task<Run> SaveFailedAsync(Run run, string reason)
         {
