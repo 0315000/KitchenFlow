@@ -56,3 +56,8 @@ POST {{KitchenFlow_Api_HostAddress}}/api/recipes/999/simulate
 GET {{KitchenFlow_Api_HostAddress}}/api/recipes/2/schedule
 ### ── T7 간선: 야채볶음 조회 (dependsOn 확인)
 GET {{KitchenFlow_Api_HostAddress}}/api/recipes/2
+### T9: 로스트치킨 실행
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/3/runs
+
+### T9: 없는 레시피 → 404
+POST {{KitchenFlow_Api_HostAddress}}/api/recipes/999/runs

@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using KitchenFlow.Api.Data;
+using KitchenFlow.Api.Services;
 var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 builder.Services.AddControllers();
 builder.Services.AddDbContext<KitchenFlowDbContext>(options =>options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddScoped<RunService>();   // T9: 실행 기록 + 재고 차감
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
