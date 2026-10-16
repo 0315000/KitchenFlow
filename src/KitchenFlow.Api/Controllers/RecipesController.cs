@@ -355,6 +355,7 @@ namespace KitchenFlow.Api.Controllers
             var steps = await _context.Steps
                 .Where(s => s.RecipeId == id)
                 .Select(s => new SimulationStep(
+                    s.MachineId,
                     s.Id,
                     s.Order,
                     s.DurationMinutes,
