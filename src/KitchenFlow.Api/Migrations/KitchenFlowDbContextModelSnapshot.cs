@@ -305,6 +305,63 @@ namespace KitchenFlow.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("KitchenFlow.Api.Models.Run", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FailureReason")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RecipeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RecipeSnapshot")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipeId");
+
+                    b.ToTable("Runs");
+                });
+
+            modelBuilder.Entity("KitchenFlow.Api.Models.RunEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("EndMin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MachineId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RunId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StartMin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StepId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RunId");
+
+                    b.ToTable("RunEvents");
+                });
+
             modelBuilder.Entity("KitchenFlow.Api.Models.Step", b =>
                 {
                     b.Property<int>("Id")
@@ -763,6 +820,28 @@ namespace KitchenFlow.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("KitchenFlow.Api.Models.Run", b =>
+                {
+                    b.HasOne("KitchenFlow.Api.Models.Recipe", "Recipe")
+                        .WithMany()
+                        .HasForeignKey("RecipeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Recipe");
+                });
+
+            modelBuilder.Entity("KitchenFlow.Api.Models.RunEvent", b =>
+                {
+                    b.HasOne("KitchenFlow.Api.Models.Run", "Run")
+                        .WithMany("Events")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Run");
+                });
+
             modelBuilder.Entity("KitchenFlow.Api.Models.Step", b =>
                 {
                     b.HasOne("KitchenFlow.Api.Models.Machine", "Machine")
@@ -823,6 +902,11 @@ namespace KitchenFlow.Api.Migrations
             modelBuilder.Entity("KitchenFlow.Api.Models.Recipe", b =>
                 {
                     b.Navigation("Steps");
+                });
+
+            modelBuilder.Entity("KitchenFlow.Api.Models.Run", b =>
+                {
+                    b.Navigation("Events");
                 });
 
             modelBuilder.Entity("KitchenFlow.Api.Models.Step", b =>

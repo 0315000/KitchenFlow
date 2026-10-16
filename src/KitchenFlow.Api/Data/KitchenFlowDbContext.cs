@@ -18,6 +18,8 @@ namespace KitchenFlow.Api.Data
         public DbSet<Ingredient> Ingredients => Set<Ingredient>();
         public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
         public DbSet<CookingTask> CookingTasks => Set<CookingTask>();
+        public DbSet<Run> Runs => Set<Run>();
+        public DbSet<RunEvent> RunEvents => Set<RunEvent>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -77,6 +79,22 @@ namespace KitchenFlow.Api.Data
                 .WithMany()
                 .HasForeignKey(d => d.DependsOnStepId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // ───────────────────────── T9: 실행 기록 ─────────────────────────
+
+            // ① Run 1 ─ N RunEvent : 실행 기록 삭제 → 그 이벤트도 삭제
+            modelBuilder.Entity<RunEvent>()
+                .HasOne(e => e.Run)
+                .WithMany(r => r.Events)
+                .HasForeignKey(e => e.RunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ② Run → Recipe : 실행 기록이 있는 레시피는 삭제 불가 (이력이 사라지지 않게)
+            modelBuilder.Entity<Run>()
+                .HasOne(r => r.Recipe)
+                .WithMany()
+                .HasForeignKey(r => r.RecipeId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             // ───────────────────────── Machine ─────────────────────────
 
