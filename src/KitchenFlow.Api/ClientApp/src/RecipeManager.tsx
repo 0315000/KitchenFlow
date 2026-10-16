@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 // T4: 레시피와 조리 단계 화면
 // - 레시피 목록 / 생성 / 삭제
-// - 레시피 상세: 단계 목록 + 추가 / 삭제 / 순서 변경(▲▼)
+// - 레시피 상세: 단계 목록 + 추가 / 삭제 / 순서 변경
 
 type RecipeSummary = { id: number; name: string; stepCount: number };
 
@@ -48,6 +48,14 @@ type TimelineEntry = {
   stepId: number;    // 어느 단계인지 (Step의 Id)
   startMin: number;  // 몇 분에 시작하나
   endMin: number;    // 몇 분에 끝나나
+};
+// T9: 실행 이력 한 줄 (GET /api/recipes/{id}/runs)
+type RunSummary = {
+  id: number;
+  startedAt: string;            // 실행 시각 (서버가 UTC로 저장)
+  succeeded: boolean;
+  failureReason: string | null; // 성공이면 null
+  totalMinutes: number;         // 실패면 0
 };
 const machineColors = ["#4e79a7", "#f28e2b", "#59a14f", "#e15759", "#76b7b2", "#b07aa1", "#edc948"];
 const colorOf = (machineId: number) => machineColors[machineId % machineColors.length];
@@ -114,6 +122,7 @@ function RecipeManager() {
   const [draftDeps, setDraftDeps] = useState<number[]>([]);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[] | null>(null);
+  const [runs, setRuns] = useState<RunSummary[]>([]); // T9: 실행 이력 목록
   // T6 재생: 지금 몇 분째인지 / 재생 중인지 / 배속 (서버가 아니라 화면이 기억한다 — DP4 결정 B)
   const [currentMin, setCurrentMin] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -129,13 +138,15 @@ function RecipeManager() {
   const fetchDetail = async (id: number) => {
     const ticket = ++latestDetailRequest.current; // 이번 요청의 번호표
 
-    // 4개를 동시에 요청하고, 다 모이면 한 번에 화면에 넣는다 (중간에 섞일 틈이 없게)
+      // 5개를 동시에 요청하고, 다 모이면 한 번에 화면에 넣는다 (중간에 섞일 틈이 없게)
     const json = (r: Response) => (r.ok ? r.json() : Promise.resolve(null));
-    const [detailData, scheduleData, validateData, simulateData] = await Promise.all([
+    const [detailData, scheduleData, validateData, simulateData, runsData] = await Promise.all([
+      
       fetch(`/api/recipes/${id}`).then(json),
       fetch(`/api/recipes/${id}/schedule`).then(json),
       fetch(`/api/recipes/${id}/validate`, { method: "POST" }).then(json),
       fetch(`/api/recipes/${id}/simulate`, { method: "POST" }).then(json),
+      fetch(`/api/recipes/${id}/runs`).then(json),
     ]);
 
     if (ticket !== latestDetailRequest.current) return; // 그 사이 다른 레시피를 눌렀으면 이 응답은 버린다
@@ -144,7 +155,7 @@ function RecipeManager() {
     setSchedule(detailData ? scheduleData : null);
     setValidation(detailData ? validateData : null);
     setTimeline(detailData ? simulateData : null);
-  };
+    setRuns(detailData ? runsData ?? [] : []);                                                    };
 
   useEffect(() => {
     fetchRecipes();
@@ -152,7 +163,6 @@ function RecipeManager() {
       .then((r) => r.json())
       .then((data: MachineOption[]) => setMachines(data));
   }, [selectedId]);
-
   useEffect(() => {
     if (selectedId !== null) {
       fetchDetail(selectedId);
@@ -162,6 +172,7 @@ function RecipeManager() {
       setSchedule(null);
       setValidation(null);
       setTimeline(null);
+      setRuns([]);
     }
     setEditingDepsId(null);
     setPlaying(false);
@@ -622,6 +633,8 @@ function RecipeManager() {
             </div>
           )}
 
+          {/* T9: 실행 이력 */}
+          <h3>실행 이력 ({runs.length}건)</h3>
           <h3>단계 추가</h3>
           <form onSubmit={handleAddStep}>
             <select
