@@ -48,30 +48,74 @@ namespace KitchenFlow.Api.Services
                     s.DurationMinutes,
                     s.DependsOn.Select(d => d.DependsOnStepId).ToList()))
                 .ToList();
-
+            
             var timeline = RecipeSimulator.Simulate(steps);
             if (timeline == null)
             {
-                run.Succeeded = false;
-                run.FailureReason = "선행 단계에 순환이 있어 실행할 수 없습니다.";
-            }
-            else
-            {
-                // 타임라인 한 칸 = RunEvent 한 줄
-                run.Succeeded = true;
-                run.Events = timeline
-                    .Select(t => new RunEvent
-                    {
-                        StepId = t.StepId,
-                        MachineId = t.MachineId,
-                        StartMin = t.StartMin,
-                        EndMin = t.EndMin
-                    })
-                    .ToList();
+                return await SaveFailedAsync(run, "선행 단계에 순환이 있어 실행할 수 없습니다.");
             }
 
+            // 타임라인 한 칸 = RunEvent 한 줄
+            run.Succeeded = true;
+            run.Events = timeline
+                .Select(t => new RunEvent
+                {
+                    StepId = t.StepId,
+                    MachineId = t.MachineId,
+                    StartMin = t.StartMin,
+                    EndMin = t.EndMin
+                                })
+                .ToList();
+
+            // ④ 재료별 필요량 합계 — 같은 재료를 여러 단계에서 쓰면 더한다 (예: 로스트치킨 버터 50 + 30)
+            var needs = recipe.Steps
+                .SelectMany(s => s.Inputs)
+                .GroupBy(i => i.IngredientId)
+                .Select(g => new { IngredientId = g.Key, Quantity = g.Sum(i => i.Quantity) })
+                                .ToList();
+
+            // ⑤ 재고 차감 + 성공 기록을 한 트랜잭션으로 — 전부 되거나, 하나도 안 되거나
+            string? shortage = null;
+            await using (var tx = await _context.Database.BeginTransactionAsync())
+            {
+                foreach (var need in needs)
+                {
+                    // 조건부 UPDATE 한 줄: 재고가 충분할 때만 깎는다 (T3 consume 과 같은 방식)
+                    // 확인과 차감이 한 문장이라, 그 사이에 다른 실행이 끼어들 틈이 없다.
+                    var updated = await _context.Ingredients
+                        .Where(i => i.Id == need.IngredientId && i.StockQty >= need.Quantity)
+                        .ExecuteUpdateAsync(set => set.SetProperty(i => i.StockQty, i => i.StockQty - need.Quantity));
+
+                    if (updated == 0)
+                    {
+                        shortage = $"재료(Id {need.IngredientId}) 재고 부족 — 필요 {need.Quantity}";
+                        break;
+                    }
+                }
+                
+
+                if (shortage == null)
+                {
+                    _context.Runs.Add(run);
+                    await _context.SaveChangesAsync();   // Run + RunEvent 들을 저장
+                    await tx.CommitAsync();              // 차감 + 기록을 한꺼번에 확정
+                    return run;
+                }
+
+                await tx.RollbackAsync();   // 앞에서 이미 깎은 재료까지 전부 되돌린다
+            }
+
+            // ⑥ 실패 기록은 트랜잭션 밖에서 — 안에서 저장하면 롤백할 때 기록까지 같이 사라진다
+            return await SaveFailedAsync(run, shortage);
+        }
+        // 실패도 Run 으로 남긴다 (완료 조건: "실패로 기록되고 재고는 그대로")
+        private async Task<Run> SaveFailedAsync(Run run, string reason)
+        {
+            run.Succeeded = false;
+            run.FailureReason = reason;
+            run.Events.Clear();   // 실제로 실행되지 않았으니 타임라인은 남기지 않는다
             _context.Runs.Add(run);
-            await _context.SaveChangesAsync();   // Run + RunEvent 들을 한 번에 저장
+            await _context.SaveChangesAsync();
             return run;
         }
 
