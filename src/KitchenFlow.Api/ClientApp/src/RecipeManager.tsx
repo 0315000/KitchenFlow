@@ -57,6 +57,10 @@ type RunSummary = {
   failureReason: string | null; // 성공이면 null
   totalMinutes: number;         // 실패면 0
 };
+// T9: 실행 1건 상세 (GET /api/recipes/{id}/runs/{runId}) — 목록 한 줄 + 그때 저장된 막대들
+type RunDetail = RunSummary & {
+  events: TimelineEntry[]; // 시뮬레이션 막대와 같은 모양 (stepId, machineId, startMin, endMin)
+};
 const machineColors = ["#4e79a7", "#f28e2b", "#59a14f", "#e15759", "#76b7b2", "#b07aa1", "#edc948"];
 const colorOf = (machineId: number) => machineColors[machineId % machineColors.length];
 // 12.5분 → "12:30" (분:초)
@@ -125,6 +129,7 @@ function RecipeManager() {
   const [timeline, setTimeline] = useState<TimelineEntry[] | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]); // T9: 실행 이력 목록
   // T6 재생: 지금 몇 분째인지 / 재생 중인지 / 배속 (서버가 아니라 화면이 기억한다 — DP4 결정 B)
+  const [selectedRun, setSelectedRun] = useState<RunDetail | null>(null); // T9: 표에서 고른 실행 1건 (상세)
   const [currentMin, setCurrentMin] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(60);
@@ -176,6 +181,7 @@ function RecipeManager() {
       setRuns([]);
     }
     setEditingDepsId(null);
+    setSelectedRun(null);
     setPlaying(false);
     setCurrentMin(0);
   }, [selectedId]);
@@ -209,6 +215,12 @@ function RecipeManager() {
   const handleRun = async () => {
     if (selectedId === null) return;
     await call(`/api/recipes/${selectedId}/runs`, "POST");
+  };
+  // T9: 실행 이력 표에서 한 줄을 누르면 그 실행의 상세(막대 포함)를 불러온다
+  const handleSelectRun = async (runId: number) => {
+    if (selectedId === null) return;
+    const res = await fetch(`/api/recipes/${selectedId}/runs/${runId}`);
+    setSelectedRun(res.ok ? await res.json() : null);
   };
   const handleCreateRecipe = async (e: { preventDefault: () => void }) => {
     e.preventDefault();
@@ -658,7 +670,11 @@ function RecipeManager() {
           </thead>
           <tbody>
           {runs.map((r) => (
-          <tr key={r.id}>
+          <tr
+            key={r.id}
+            onClick={() => handleSelectRun(r.id)}
+            style={{ cursor: "pointer", background: selectedRun?.id === r.id ? "#eef" : undefined }}
+          >
                     <td>{r.id}</td>
                     <td>{formatRunTime(r.startedAt)}</td>
                     <td style={{ color: r.succeeded ? "#188038" : "#d93025" }}>{r.succeeded ? "✔ 성공" : "✘ 실패"}</td>
@@ -668,9 +684,13 @@ function RecipeManager() {
                 ))}            
           </tbody>
           </table>
-          )}
-          
-          
+          )}          
+          {/* T9: 선택한 실행 (D3에서 간트·재생·스코어로 바꿀 자리) */}
+          {selectedRun && (
+            <p>
+              선택한 실행: #{selectedRun.id} · {selectedRun.succeeded ? "성공" : "실패"} · 막대 {selectedRun.events.length}개
+            </p>
+          )}          
           <h3>단계 추가</h3>
           <form onSubmit={handleAddStep}>
             <select
