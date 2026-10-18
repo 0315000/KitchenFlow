@@ -124,7 +124,14 @@ namespace KitchenFlow.Api.Services
                 .OrderByDescending(r => r.Id)         // 최신 실행이 위로
                 .ToListAsync();
         }
-
+        // 할 일 3 상세: 실행 1건 (막대 포함). 이 레시피의 실행이 아니면 null
+        public async Task<Run?> GetRunAsync(int recipeId, int runId)
+        {
+            return await _context.Runs
+                .AsNoTracking()
+                .Include(r => r.Events)                                        // 타임라인 재생용 막대
+                .FirstOrDefaultAsync(r => r.Id == runId && r.RecipeId == recipeId);
+        }
         // 실패도 Run 으로 남긴다 (완료 조건: "실패로 기록되고 재고는 그대로")
         private async Task<Run> SaveFailedAsync(Run run, string reason)
         {

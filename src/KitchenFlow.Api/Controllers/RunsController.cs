@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using KitchenFlow.Api.Services;
+using System.Text.Json;
 
 namespace KitchenFlow.Api.Controllers
 {
@@ -56,6 +57,32 @@ namespace KitchenFlow.Api.Controllers
                 // 총 소요시간 = 가장 늦게 끝난 단계의 끝 시각 (실패한 실행은 이벤트가 없어 0)
                 TotalMinutes = r.Events.Count == 0 ? 0 : r.Events.Max(e => e.EndMin)
             }));
+        }
+
+        // GET /api/recipes/{recipeId}/runs/{runId} : 실행 1건 상세 (타임라인 재생 + 스코어 + 실패 사유용)
+        [HttpGet("{runId}")]
+        public async Task<IActionResult> GetRun(int recipeId, int runId)
+        {
+            var run = await _runService.GetRunAsync(recipeId, runId);
+            if (run == null)
+            {
+                return NotFound("해당 실행 기록을 찾을 수 없습니다.");
+            }
+
+            return Ok(new
+            {
+                run.Id,
+                run.RecipeId,
+                run.StartedAt,
+                run.Succeeded,
+                run.FailureReason,
+                TotalMinutes = run.Events.Count == 0 ? 0 : run.Events.Max(e => e.EndMin),
+                Events = run.Events
+                    .OrderBy(e => e.StartMin)
+                    .Select(e => new { e.StepId, e.MachineId, e.StartMin, e.EndMin }),
+                // DB에는 JSON "글자"로 저장돼 있어서, 객체로 바꿔 보내야 화면에서 바로 쓸 수 있다
+                RecipeSnapshot = JsonSerializer.Deserialize<JsonElement>(run.RecipeSnapshot)
+            });
         }
     }
 }
