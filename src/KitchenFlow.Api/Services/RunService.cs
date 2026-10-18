@@ -39,6 +39,14 @@ namespace KitchenFlow.Api.Services
                 RecipeSnapshot = TakeSnapshot(recipe)
             };
 
+            // ② 검증 — /validate 와 같은 검사. 실행할 수 없는 레시피(없는 기계, 용량·온도 초과, 재고 부족 등)는
+            //    재고를 건드리지 않고 실패로 기록한다 (엣지케이스: 검증 실패한 레시피를 강제 실행)
+            var violations = await ValidateAsync(recipe);
+            if (violations.Count > 0)
+            {
+                return await SaveFailedAsync(run, "검증 실패 — " + string.Join(" / ", violations.Select(v => v.Message)));
+            }
+
             // ③ 시뮬레이션 — /simulate 와 같은 계산 (T8 기계 경합 포함)
             var steps = recipe.Steps
                 .Select(s => new SimulationStep(
@@ -88,7 +96,7 @@ namespace KitchenFlow.Api.Services
 
                     if (updated == 0)
                     {
-                        shortage = $"재료(Id {need.IngredientId}) 재고 부족 — 필요 {need.Quantity}";
+                        shortage = $"재료(Id {need.IngredientId}) 재고 부족 — 필요 {need.Quantity:0.##}";
                         break;
                     }
                 }
@@ -132,6 +140,33 @@ namespace KitchenFlow.Api.Services
                 .Include(r => r.Events)                                        // 타임라인 재생용 막대
                 .FirstOrDefaultAsync(r => r.Id == runId && r.RecipeId == recipeId);
         }
+
+        // 검증 입력 만들기 — 단계는 ①에서 한 번 읽은 recipe 를 그대로 쓰고, 기계·재료는 지금 값을 읽는다
+        private async Task<List<Violation>> ValidateAsync(Recipe recipe)
+        {
+            var steps = recipe.Steps
+                .OrderBy(s => s.Order)
+                .Select(s => new ValidationStep(
+                    s.Id,
+                    s.Order,
+                    s.MachineId,
+                    s.DurationMinutes,
+                    s.TempC,
+                    s.Inputs.Select(i => new ValidationInput(i.IngredientId, i.Quantity)).ToList(),
+                    s.DependsOn.Select(d => d.DependsOnStepId).ToList()))
+                .ToList();
+
+            var machines = await _context.Machines.AsNoTracking().ToDictionaryAsync(
+                m => m.Id,
+                m => new ValidationMachine(m.Id, m.Name, m.CapacityMl, m.MinTempC, m.MaxTempC, m.IsAvailable));
+
+            var ingredients = await _context.Ingredients.AsNoTracking().ToDictionaryAsync(
+                i => i.Id,
+                i => new ValidationIngredient(i.Id, i.Name, i.Unit, i.StockQty));
+
+            return RecipeValidator.Validate(steps, machines, ingredients);
+        }
+
         // 실패도 Run 으로 남긴다 (완료 조건: "실패로 기록되고 재고는 그대로")
         private async Task<Run> SaveFailedAsync(Run run, string reason)
         {
