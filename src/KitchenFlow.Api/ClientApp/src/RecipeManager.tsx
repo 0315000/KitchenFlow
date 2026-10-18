@@ -289,7 +289,15 @@ function RecipeManager() {
 
   // 간트 차트 1분당 픽셀 (전체가 약 600px 안에 들어오게)
   const pxPerMinute = schedule && schedule.totalMinutes > 0 ? Math.min(12, 600 / schedule.totalMinutes) : 12;
-    // T9: 실행 이력에서 고른 실행이 있으면 그 실행의 막대를, 없으면 시뮬레이션 막대를 아래 간트·재생·스코어에 쓴다
+  // T9 할 일 4: 베스트 기록 = 성공한 실행 중 총 소요시간이 가장 짧은 것 (동점이면 먼저 세운 기록 = 번호가 작은 쪽)
+  const successRuns = runs.filter((r) => r.succeeded);
+  const bestRun =
+    successRuns.length === 0
+      ? null
+      : successRuns.reduce((best, r) =>
+          r.totalMinutes < best.totalMinutes || (r.totalMinutes === best.totalMinutes && r.id < best.id) ? r : best
+        );  
+  // T9: 실행 이력에서 고른 실행이 있으면 그 실행의 막대를, 없으면 시뮬레이션 막대를 아래 간트·재생·스코어에 쓴다
   const shown = selectedRun ? selectedRun.events : timeline;
   // (병렬이면 배열의 마지막 항목이 가장 늦게 끝난다는 보장이 없다)
   const simTotal = shown && shown.length > 0 ? Math.max(...shown.map((t) => t.endMin)) : 0;
@@ -667,6 +675,13 @@ function RecipeManager() {
             실행 이력 ({runs.length}건){" "}
             <button onClick={handleRun} disabled={busy}>▶ 실행</button>
           </h3>
+          {/* T9 할 일 4: 레시피별 베스트 기록 */}
+          <p>
+            🏆 베스트 기록:{" "}
+            {bestRun
+              ? `#${bestRun.id} · ${bestRun.totalMinutes}분 · ${formatRunTime(bestRun.startedAt)}`
+              : "아직 성공한 실행이 없습니다."}
+          </p>
           {runs.length === 0 ? (
           <p> 아직 실행한 기록이 없습니다.</p>
         ):(
@@ -687,7 +702,7 @@ function RecipeManager() {
             onClick={() => handleSelectRun(r.id)}
             style={{ cursor: "pointer", background: selectedRun?.id === r.id ? "#eef" : undefined }}
           >
-                    <td>{r.id}</td>
+                    <td>{r.id}{bestRun?.id === r.id && " 🏆"}</td>
                     <td>{formatRunTime(r.startedAt)}</td>
                     <td style={{ color: r.succeeded ? "#188038" : "#d93025" }}>{r.succeeded ? "✔ 성공" : "✘ 실패"}</td>
                     <td>{r.succeeded ? r.totalMinutes : "-"}</td>
@@ -709,7 +724,8 @@ function RecipeManager() {
               실제로 조리하지 않아 다시 볼 타임라인이 없어요.{" "}
               <button onClick={() => setSelectedRun(null)}>↩ 시뮬레이션으로 돌아가기</button>
             </p>
-          )}  
+          )}
+
           <h3>단계 추가</h3>
           <form onSubmit={handleAddStep}>
             <select
