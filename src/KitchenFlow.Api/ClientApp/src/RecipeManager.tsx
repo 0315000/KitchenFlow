@@ -221,6 +221,8 @@ function RecipeManager() {
     if (selectedId === null) return;
     const res = await fetch(`/api/recipes/${selectedId}/runs/${runId}`);
     setSelectedRun(res.ok ? await res.json() : null);
+    setPlaying(false); // 다른 실행을 고르면 재생을 멈추고 처음부터
+    setCurrentMin(0);
   };
   const handleCreateRecipe = async (e: { preventDefault: () => void }) => {
     e.preventDefault();
@@ -287,27 +289,28 @@ function RecipeManager() {
 
   // 간트 차트 1분당 픽셀 (전체가 약 600px 안에 들어오게)
   const pxPerMinute = schedule && schedule.totalMinutes > 0 ? Math.min(12, 600 / schedule.totalMinutes) : 12;
-  // T7 의존관계 시뮬레이션: 총 소요시간 = 가장 늦게 끝나는 단계의 끝 시각
+    // T9: 실행 이력에서 고른 실행이 있으면 그 실행의 막대를, 없으면 시뮬레이션 막대를 아래 간트·재생·스코어에 쓴다
+  const shown = selectedRun ? selectedRun.events : timeline;
   // (병렬이면 배열의 마지막 항목이 가장 늦게 끝난다는 보장이 없다)
-  const simTotal = timeline && timeline.length > 0 ? Math.max(...timeline.map((t) => t.endMin)) : 0;
+  const simTotal = shown && shown.length > 0 ? Math.max(...shown.map((t) => t.endMin)) : 0;
   const simPx = simTotal > 0 ? 600 / simTotal : 12; // T8: 레시피 길이와 상관없이 간트 폭을 600px 로 맞춘다 (짧은 레시피도 막대 이름이 보이게)
   // T8: 기계별 레인 — 같은 기계를 쓰는 단계들을 한 줄에 모은다 (기계가 처음 나온 순서대로)
-  const lanes = timeline
-    ? [...new Set(timeline.map((t) => t.machineId))].map((machineId) => ({
+  const lanes = shown
+    ? [...new Set(shown.map((t) => t.machineId))].map((machineId) => ({
         machineId,
-        entries: timeline.filter((t) => t.machineId === machineId),
+        entries: shown.filter((t) => t.machineId === machineId),
       }))
     : [];
   // T8: 스코어 — 총 소요시간 / 기계 유휴율 / 재료 낭비량 → 별 3개
-  const endOfStep = new Map((timeline ?? []).map((t) => [t.stepId, t.endMin])); // 단계 Id → 끝 시각
+  const endOfStep = new Map((shown ?? []).map((t) => [t.stepId, t.endMin])); // 단계 Id → 끝 시각
   // ① 총 소요시간: 순차 실행(모든 단계 시간 합) 대비 얼마나 줄었나
   const seqTotal = detail ? detail.steps.reduce((sum, s) => sum + s.durationMinutes, 0) : 0;
   const shortenPct = seqTotal > 0 ? Math.round((1 - simTotal / seqTotal) * 100) : 0;
   // ② 기계 유휴율: 쓰는 기계들의 전체 시간 중 놀고 있는 비율
-  const busyTotal = (timeline ?? []).reduce((sum, t) => sum + (t.endMin - t.startMin), 0);
+  const busyTotal = (shown ?? []).reduce((sum, t) => sum + (t.endMin - t.startMin), 0);
   const idlePct = lanes.length > 0 && simTotal > 0 ? Math.round((1 - busyTotal / (lanes.length * simTotal)) * 100) : 0;
   // ③ 재료 낭비량: 재료가 들어간 단계가 준비된 뒤 기계를 기다린 시간 합 (손질한 재료가 방치된 시간)
-  const wasteMin = (timeline ?? []).reduce((sum, t) => {
+  const wasteMin = (shown ?? []).reduce((sum, t) => {
     const step = detail?.steps.find((s) => s.id === t.stepId);
     if (!step || step.inputs.length === 0) return sum;                            // 재료가 없는 단계는 제외
     const readyAt = Math.max(0, ...step.dependsOn.map((d) => endOfStep.get(d) ?? 0)); // 선행이 다 끝난 시각
@@ -543,9 +546,18 @@ function RecipeManager() {
               </p>
             </div>
           )}
-          {timeline && timeline.length > 0 && (
+          {shown && shown.length > 0 && (
             <div style={{ margin: "24px 0", textAlign: "left" }}>
-             <h3 style={{ textAlign: "center" }}>의존관계 시뮬레이션 — 선행 단계가 끝나면 시작</h3>
+              <h3 style={{ textAlign: "center" }}>
+                {selectedRun
+                  ? `#${selectedRun.id} 실행 다시 보기 — ${formatRunTime(selectedRun.startedAt)}`
+                  : "의존관계 시뮬레이션 — 선행 단계가 끝나면 시작"}
+              </h3>
+              {selectedRun && (
+                <p style={{ textAlign: "center" }}>
+                  <button onClick={() => setSelectedRun(null)}>↩ 시뮬레이션으로 돌아가기</button>
+                </p>
+              )}
               <p style={{ textAlign: "center" }}>
                 완성까지 <b>{simTotal}분</b> (선행이 없는 단계는 동시에 시작)
               </p>
@@ -685,12 +697,19 @@ function RecipeManager() {
           </tbody>
           </table>
           )}          
-          {/* T9: 선택한 실행 (D3에서 간트·재생·스코어로 바꿀 자리) */}
-          {selectedRun && (
-            <p>
-              선택한 실행: #{selectedRun.id} · {selectedRun.succeeded ? "성공" : "실패"} · 막대 {selectedRun.events.length}개
+{/* T9: 고른 실행이 성공이면 위쪽 간트에서 다시 보기 안내 */}
+          {selectedRun && selectedRun.succeeded && (
+            <p>#{selectedRun.id} 실행을 위쪽 간트에서 다시 보고 있어요. ▶ 재생으로 그때 진행을 볼 수 있어요.</p>
+          )}
+{/* T9: 고른 실행이 실패면 실패 사유  */}
+          {selectedRun && !selectedRun.succeeded && (
+            <p style={{ color: "#d93025" }}>
+              ✘ #{selectedRun.id} 실행 실패 — {selectedRun.failureReason}
+              <br />
+              실제로 조리하지 않아 다시 볼 타임라인이 없어요.{" "}
+              <button onClick={() => setSelectedRun(null)}>↩ 시뮬레이션으로 돌아가기</button>
             </p>
-          )}          
+          )}  
           <h3>단계 추가</h3>
           <form onSubmit={handleAddStep}>
             <select
