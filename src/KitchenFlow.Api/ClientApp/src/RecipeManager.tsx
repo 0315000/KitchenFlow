@@ -64,8 +64,9 @@ const formatMin = (min: number) => {
   const totalSec = Math.floor(min * 60);
   return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, "0")}`;
 };
+// T9: 서버 시각(UTC인데 끝에 Z가 없음) → 한국 시각 "2026. 10. 16. 오후 3:41:38"
+const formatRunTime = (utc: string) => new Date(utc.endsWith("Z") ? utc : utc + "Z").toLocaleString("ko-KR");
 type RecipeDetail = { id: number; name: string; steps: Step[] };
-
 type MachineOption = { id: number; name: string };
 
 // T5: 실행 전 검사 결과 (POST /api/recipes/{id}/validate)
@@ -204,7 +205,11 @@ function RecipeManager() {
       setBusy(false);
     }
   };
-
+  // T9: 레시피 실행 → 서버가 재고 차감 + 기록 저장. 끝나면 call 이 상세(실행 이력 포함)를 다시 불러온다
+  const handleRun = async () => {
+    if (selectedId === null) return;
+    await call(`/api/recipes/${selectedId}/runs`, "POST");
+  };
   const handleCreateRecipe = async (e: { preventDefault: () => void }) => {
     e.preventDefault();
     if (busy) return;
@@ -634,7 +639,38 @@ function RecipeManager() {
           )}
 
           {/* T9: 실행 이력 */}
-          <h3>실행 이력 ({runs.length}건)</h3>
+          <h3>
+            실행 이력 ({runs.length}건){" "}
+            <button onClick={handleRun} disabled={busy}>▶ 실행</button>
+          </h3>
+          {runs.length === 0 ? (
+          <p> 아직 실행한 기록이 없습니다.</p>
+        ):(
+        <table border={1} cellPadding={6} style={{ borderCollapse: "collapse", marginBottom: 24 }}>
+        <thead>
+          <tr>
+          <th>#</th>
+          <th>실행 시각</th>
+          <th>결과</th>
+          <th>소요(분)</th>
+          <th>실패 사유</th>
+          </tr>
+          </thead>
+          <tbody>
+          {runs.map((r) => (
+          <tr key={r.id}>
+                    <td>{r.id}</td>
+                    <td>{formatRunTime(r.startedAt)}</td>
+                    <td style={{ color: r.succeeded ? "#188038" : "#d93025" }}>{r.succeeded ? "✔ 성공" : "✘ 실패"}</td>
+                    <td>{r.succeeded ? r.totalMinutes : "-"}</td>
+                    <td>{r.failureReason ?? ""}</td>
+                  </tr>
+                ))}            
+          </tbody>
+          </table>
+          )}
+          
+          
           <h3>단계 추가</h3>
           <form onSubmit={handleAddStep}>
             <select
