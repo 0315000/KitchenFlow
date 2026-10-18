@@ -76,6 +76,20 @@ namespace KitchenFlow.Api.Tests
         }
 
         [Fact]
+        public async Task DeleteRecipe_WithRunHistory_Returns409AndKeepsRecipe()
+        {
+            _context.Runs.Add(new Run { RecipeId = 1, StartedAt = DateTime.UtcNow, Succeeded = true });
+            await _context.SaveChangesAsync();
+
+            var result = await _controller.DeleteRecipe(1);   // 라면 (실행 기록 있음)
+
+            Assert.IsType<ConflictObjectResult>(result);
+            _context.ChangeTracker.Clear();
+            Assert.True(await _context.Recipes.AnyAsync(r => r.Id == 1));   // 레시피도 이력도 남는다
+            Assert.True(await _context.Runs.AnyAsync(r => r.RecipeId == 1));
+        }
+
+        [Fact]
         public async Task DeleteRecipe_NotFound_Returns404()
         {
             var result = await _controller.DeleteRecipe(999);

@@ -247,6 +247,13 @@ namespace KitchenFlow.Api.Controllers
                 return NotFound("해당 레시피를 찾을 수 없습니다.");
             }
 
+            // T9: 실행 기록(이력)이 있는 레시피는 지우지 않는다 (Run → Recipe 는 Restrict).
+            // 막지 않으면 DB 제약 오류가 그대로 500 으로 나가므로, 먼저 확인해서 409 로 알려준다.
+            if (await _context.Runs.AnyAsync(r => r.RecipeId == id))
+            {
+                return Conflict("실행 기록이 있는 레시피는 삭제할 수 없습니다.");
+            }
+
             _context.Recipes.Remove(recipe);
             await _context.SaveChangesAsync();
             return NoContent();
