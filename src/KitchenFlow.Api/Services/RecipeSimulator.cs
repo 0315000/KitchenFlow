@@ -1,10 +1,20 @@
 namespace KitchenFlow.Api.Services
 {
     // ① 입력 record — Step.cs에서 필요한 값만 (단계 구분 / 순서 / 소요시간 / 선행 단계)
-    public record SimulationStep(int MachineId, int StepId, int Order, int DurationMinutes, IReadOnlyList<int> DependsOn);
+    //    T10: TempC(단계 온도)와 NeedsPreheat(예열이 필요한 기계 = 오븐인지)는 선택값.
+    //         안 넘기면 예열 없이 예전과 똑같이 계산한다 (기존 호출자·테스트 하위 호환).
+    public record SimulationStep(
+        int MachineId,
+        int StepId,
+        int Order,
+        int DurationMinutes,
+        IReadOnlyList<int> DependsOn,
+        int? TempC = null,
+        bool NeedsPreheat = false);
 
     // ② 출력 record — stepId, startMin, endMin
-    public record TimelineEntry(int MachineId, int StepId, int StartMin, int EndMin);
+    //    T10: IsPreheat = true 이면 StepId 단계를 위해 오븐을 달군 예열 구간 (같은 StepId 의 굽기 막대 바로 앞)
+    public record TimelineEntry(int MachineId, int StepId, int StartMin, int EndMin, bool IsPreheat = false);
 
     // ③ 단계 목록 → 타임라인 (T7: 의존관계 기반)
     //  - 선행 단계가 모두 끝나야 시작한다. 선행이 없으면 0분에 시작 → 동시에 시작하는 단계가 생긴다.
@@ -13,6 +23,18 @@ namespace KitchenFlow.Api.Services
     //  - DB도 시간도 모른다: 같은 입력이면 항상 같은 결과 (DP4 결정 B)
     public static class RecipeSimulator
     {
+        // T10 예열 규칙: 100°C 올리는 데 5분, 분 단위로 올림 (150°C → 7.5분 → 8분)
+        public const int PreheatMinutesPer100C = 5;
+
+        // T10: 예열이 필요한 기계 종류 (Machine.Kind). 다른 기계의 예열은 범위 밖(follow-up)
+        public const string PreheatMachineKind = "Oven";
+
+        public static int PreheatMinutes(int fromTempC, int toTempC)
+        {
+            int rise = toTempC - fromTempC;
+            return rise <= 0 ? 0 : (int)Math.Ceiling(rise * PreheatMinutesPer100C / 100.0);
+        }
+
         public static List<TimelineEntry>? Simulate(IReadOnlyList<SimulationStep> steps)
         {
             var byId = steps.ToDictionary(s => s.StepId);
@@ -89,8 +111,15 @@ namespace KitchenFlow.Api.Services
             //  - 매번 "가장 일찍 시작할 수 있는 단계"들 중에서 규칙으로 하나 고른다 (그리디)
             //  - 규칙: 임계경로 큰 것 → 같으면 Order 작은 것
             var machineFreeAt = new Dictionary<int, int>();   // 기계 Id → 그 기계가 비는 시각
+            var machineTemp = new Dictionary<int, int>();     // T10: 기계 Id → 지금까지 달궈진 온도 (처음엔 0, 식는 시간은 무시)
 
-            while (timeline.Count < steps.Count)
+            // T10: 이 단계를 시작하기 전에 필요한 예열 시간 (오븐이 아니거나, 온도가 없거나, 이미 충분히 뜨거우면 0)
+            int PreheatFor(SimulationStep s)
+                => s.NeedsPreheat && s.TempC is int temp
+                    ? PreheatMinutes(machineTemp.GetValueOrDefault(s.MachineId, 0), temp)
+                    : 0;
+
+            while (endOf.Count < steps.Count)   // T10: 예열 막대가 섞이므로 timeline 개수가 아니라 배정한 단계 수로 센다
             {
                 // ① 후보: 아직 배정 안 됐고, 선행 단계가 전부 배정된 단계들
                 var candidates = steps
@@ -99,12 +128,13 @@ namespace KitchenFlow.Api.Services
                     .ToList();
 
                 // ② 후보마다 가장 빨리 시작할 수 있는 시각
-                //    = max(선행 단계들 중 가장 늦게 끝난 시각, 내 기계가 비는 시각)
+                //    = max(선행 단계들 중 가장 늦게 끝난 시각, 내 기계가 비는 시각 + 예열 시간)
+                //    T10: 예열은 재료가 필요 없어서 선행 단계를 기다리지 않는다 → 기계가 비면 미리 달굴 수 있다
                 int EarliestStart(SimulationStep s)
                 {
                     int depsDone = depsOf[s.StepId].Count == 0 ? 0 : depsOf[s.StepId].Max(d => endOf[d]);
                     int machineFree = machineFreeAt.GetValueOrDefault(s.MachineId, 0);
-                    return Math.Max(depsDone, machineFree);
+                    return Math.Max(depsDone, machineFree + PreheatFor(s));
                 }
 
                 // ③ 가장 이른 시각
@@ -118,6 +148,18 @@ namespace KitchenFlow.Api.Services
                     .First();
 
                 // ⑤ 배정
+                // T10: 예열이 필요하면 굽기 바로 앞에 예열 구간을 넣는다 (굽기 시작 시각에 딱 맞춰 끝나게)
+                int preheat = PreheatFor(pick);
+                if (preheat > 0)
+                {
+                    timeline.Add(new TimelineEntry(pick.MachineId, pick.StepId, now - preheat, now, IsPreheat: true));
+                }
+                if (pick.NeedsPreheat && pick.TempC is int pickTemp)
+                {
+                    // 더 높게 달궜으면 그 온도를 기억한다. 더 낮은 온도 단계는 식히지 않는다 (T10 PM 답변)
+                    machineTemp[pick.MachineId] = Math.Max(machineTemp.GetValueOrDefault(pick.MachineId, 0), pickTemp);
+                }
+
                 int end = now + pick.DurationMinutes;
                 endOf[pick.StepId] = end;
                 machineFreeAt[pick.MachineId] = end;

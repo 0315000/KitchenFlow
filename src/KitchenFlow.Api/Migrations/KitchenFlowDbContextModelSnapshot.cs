@@ -343,6 +343,9 @@ namespace KitchenFlow.Api.Migrations
                     b.Property<int>("EndMin")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsPreheat")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("MachineId")
                         .HasColumnType("INTEGER");
 
@@ -483,16 +486,6 @@ namespace KitchenFlow.Api.Migrations
                             Order = 6,
                             RecipeId = 2,
                             TempC = 4
-                        },
-                        new
-                        {
-                            Id = 10,
-                            Action = "오븐 예열",
-                            DurationMinutes = 10,
-                            MachineId = 1,
-                            Order = 1,
-                            RecipeId = 3,
-                            TempC = 200
                         },
                         new
                         {
@@ -660,11 +653,6 @@ namespace KitchenFlow.Api.Migrations
                         {
                             StepId = 14,
                             DependsOnStepId = 13
-                        },
-                        new
-                        {
-                            StepId = 15,
-                            DependsOnStepId = 10
                         },
                         new
                         {

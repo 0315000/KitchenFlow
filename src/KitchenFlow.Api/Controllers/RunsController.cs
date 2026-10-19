@@ -34,7 +34,7 @@ namespace KitchenFlow.Api.Controllers
                 run.StartedAt,
                 run.Succeeded,
                 run.FailureReason,
-                Events = run.Events.Select(e => new { e.StepId, e.MachineId, e.StartMin, e.EndMin })
+                Events = run.Events.Select(e => new { e.StepId, e.MachineId, e.StartMin, e.EndMin, e.IsPreheat })
             });
         }
 
@@ -79,7 +79,7 @@ namespace KitchenFlow.Api.Controllers
                 TotalMinutes = run.Events.Count == 0 ? 0 : run.Events.Max(e => e.EndMin),
                 Events = run.Events
                     .OrderBy(e => e.StartMin)
-                    .Select(e => new { e.StepId, e.MachineId, e.StartMin, e.EndMin }),
+                    .Select(e => new { e.StepId, e.MachineId, e.StartMin, e.EndMin, e.IsPreheat }),
                 // DB에는 JSON "글자"로 저장돼 있어서, 객체로 바꿔 보내야 화면에서 바로 쓸 수 있다
                 RecipeSnapshot = JsonSerializer.Deserialize<JsonElement>(run.RecipeSnapshot)
             });

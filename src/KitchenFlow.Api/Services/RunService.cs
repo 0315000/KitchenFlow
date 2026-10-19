@@ -47,14 +47,21 @@ namespace KitchenFlow.Api.Services
                 return await SaveFailedAsync(run, "검증 실패 — " + string.Join(" / ", violations.Select(v => v.Message)));
             }
 
-            // ③ 시뮬레이션 — /simulate 와 같은 계산 (T8 기계 경합 포함)
+            // ③ 시뮬레이션 — /simulate 와 같은 계산 (T8 기계 경합 + T10 오븐 예열 포함)
+            var preheatMachineIds = await _context.Machines
+                .Where(m => m.Kind == RecipeSimulator.PreheatMachineKind)
+                .Select(m => m.Id)
+                .ToListAsync();
+
             var steps = recipe.Steps
                 .Select(s => new SimulationStep(
                     s.MachineId,
                     s.Id,
                     s.Order,
                     s.DurationMinutes,
-                    s.DependsOn.Select(d => d.DependsOnStepId).ToList()))
+                    s.DependsOn.Select(d => d.DependsOnStepId).ToList(),
+                    s.TempC,
+                    preheatMachineIds.Contains(s.MachineId)))
                 .ToList();
             
             var timeline = RecipeSimulator.Simulate(steps);
@@ -71,8 +78,9 @@ namespace KitchenFlow.Api.Services
                     StepId = t.StepId,
                     MachineId = t.MachineId,
                     StartMin = t.StartMin,
-                    EndMin = t.EndMin
-                                })
+                    EndMin = t.EndMin,
+                    IsPreheat = t.IsPreheat
+                })
                 .ToList();
 
             // ④ 재료별 필요량 합계 — 같은 재료를 여러 단계에서 쓰면 더한다 (예: 로스트치킨 버터 50 + 30)

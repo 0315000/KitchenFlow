@@ -137,5 +137,106 @@ namespace KitchenFlow.Api.Tests
             Assert.Equal((15, 45), t[3]);   // 소스는 닭이 끝나자마자 인덕션에서 시작
             Assert.Equal(55, t.Values.Max(x => x.end));   // 총 55분 (감자 먼저였다면 85분)
         }
+
+        // ── T10 오븐 예열 (DP3-2 엣지케이스 9~14) ──
+
+        // 오븐 단계: 온도를 주고 예열이 필요한 기계로 표시한다. temp 가 null 이면 온도 없는 단계(휴지)
+        private static SimulationStep OvenStep(int id, int duration, int? temp, params int[] dependsOn)
+            => new(Oven, id, id, duration, dependsOn, temp, NeedsPreheat: true);
+
+        // 굽기 막대만 "단계 Id → (시작, 끝)" 으로, 예열 막대는 따로 "단계 Id → (시작, 끝)" 으로 나눠 본다
+        private static (Dictionary<int, (int start, int end)> steps, Dictionary<int, (int start, int end)> preheats) RunWithPreheat(params SimulationStep[] steps)
+        {
+            var timeline = RecipeSimulator.Simulate(steps)!;
+            return (
+                timeline.Where(t => !t.IsPreheat).ToDictionary(t => t.StepId, t => (t.StartMin, t.EndMin)),
+                timeline.Where(t => t.IsPreheat).ToDictionary(t => t.StepId, t => (t.StartMin, t.EndMin)));
+        }
+
+        [Fact]
+        public void Preheat_FirstOvenUse_AddsPreheatBeforeBaking()
+        {
+            // 엣지 9: 처음 쓰는 오븐을 200°C로 → 200 ÷ 100 × 5 = 10분 예열
+            var (t, p) = RunWithPreheat(OvenStep(1, 30, 200));
+
+            Assert.Equal((0, 10), p[1]);    // 0분부터 10분까지 예열
+            Assert.Equal((10, 40), t[1]);   // 예열이 끝나야 굽기 시작
+        }
+
+        [Fact]
+        public void Preheat_SameTempAgain_IsSkipped()
+        {
+            // 엣지 10: 200°C 굽기 다음 같은 오븐 200°C → 이미 달궈져 있으니 예열 없음
+            var (t, p) = RunWithPreheat(OvenStep(1, 30, 200), OvenStep(2, 25, 200, 1));
+
+            Assert.Single(p);               // 예열은 처음 한 번뿐
+            Assert.Equal((40, 65), t[2]);   // 1번(40분 끝) 바로 뒤에 시작
+        }
+
+        [Fact]
+        public void Preheat_HigherTemp_OnlyTheMissingPart_RoundedUp()
+        {
+            // 엣지 11: 200°C 다음 230°C → 모자란 30°C → 1.5분 → 올림 2분
+            var (t, p) = RunWithPreheat(OvenStep(1, 30, 200), OvenStep(2, 10, 230, 1));
+
+            Assert.Equal((40, 42), p[2]);
+            Assert.Equal((42, 52), t[2]);
+        }
+
+        [Fact]
+        public void Preheat_LowerTemp_IsSkipped()
+        {
+            // 200°C 다음 150°C → 식히는 시간은 무시하고 예열도 없음
+            var (t, p) = RunWithPreheat(OvenStep(1, 30, 200), OvenStep(2, 10, 150, 1));
+
+            Assert.False(p.ContainsKey(2));
+            Assert.Equal((40, 50), t[2]);
+        }
+
+        [Fact]
+        public void Preheat_OvenStepWithoutTemp_IsSkipped()
+        {
+            // 엣지 12: 온도가 없는 오븐 단계(휴지) → 예열 없음
+            var (t, p) = RunWithPreheat(OvenStep(1, 10, null));
+
+            Assert.Empty(p);
+            Assert.Equal((0, 10), t[1]);
+        }
+
+        [Fact]
+        public void Preheat_DoesNotWaitForPreviousStep()
+        {
+            // R4: 예열은 재료가 필요 없어서 앞 단계(손질 15분)를 기다리지 않는다
+            //     → 굽기 시작(15분)에 딱 맞춰 5~15분에 예열, 굽기가 예열 때문에 늦어지지 않는다
+            var (t, p) = RunWithPreheat(
+                OnMachine(1, Induction, 15),
+                OvenStep(2, 30, 200, 1));
+
+            Assert.Equal((5, 15), p[2]);
+            Assert.Equal((15, 45), t[2]);
+        }
+
+        [Fact]
+        public void Preheat_OccupiesOven_OtherOvenStepWaits()
+        {
+            // 엣지 13: 예열도 오븐을 쓰는 시간 → 다른 오븐 단계와 겹치지 않는다
+            var (t, p) = RunWithPreheat(OvenStep(1, 30, 200), OvenStep(2, 20, 100));
+
+            var bars = new[] { p[1], t[1], t[2] }.OrderBy(b => b.start).ToList();
+            for (int i = 1; i < bars.Count; i++)
+            {
+                Assert.True(bars[i].start >= bars[i - 1].end);   // 오븐 막대끼리 겹치지 않는다
+            }
+        }
+
+        [Fact]
+        public void Preheat_NotRequested_KeepsOldBehavior()
+        {
+            // 하위 호환: 온도가 있어도 예열 표시(NeedsPreheat)가 없으면 예전과 똑같이 0분 시작
+            var timeline = RecipeSimulator.Simulate([new SimulationStep(Oven, 1, 1, 30, [], 200)])!;
+
+            Assert.Single(timeline);
+            Assert.Equal(0, timeline[0].StartMin);
+        }
     }
 }

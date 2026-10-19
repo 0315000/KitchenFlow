@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using KitchenFlow.Api.Controllers;
 using KitchenFlow.Api.Data;
 using KitchenFlow.Api.Models;
+using KitchenFlow.Api.Services;
 using Xunit;
 
 namespace KitchenFlow.Api.Tests
@@ -72,7 +73,7 @@ namespace KitchenFlow.Api.Tests
             Assert.False(await _context.StepInputs.AnyAsync(i => ramenStepIds.Contains(i.StepId))); // Cascade
             Assert.Equal(ingredientCountBefore, await _context.Ingredients.CountAsync());           // 재료는 남음
             Assert.Equal(machineCountBefore, await _context.Machines.CountAsync());                 // 기계는 남음
-            Assert.Equal(12, await _context.Steps.CountAsync(s => s.RecipeId == 3));                // 다른 레시피는 그대로
+            Assert.Equal(11, await _context.Steps.CountAsync(s => s.RecipeId == 3));                // 다른 레시피는 그대로 (T10: 시드 "오븐 예열" 단계 제거로 12 → 11)
         }
 
         [Fact]
@@ -228,16 +229,33 @@ namespace KitchenFlow.Api.Tests
             Assert.Equal(15, sequential);   // 하나씩 하면 15분
         }
 
+        // T10: 시드의 "오븐 예열"(10) 단계를 없앴고, T4 조리 흐름(GET /schedule)은 예열을 반영하지 않기로 했다 (DP4 결정 2).
+        //      그래서 예전 테스트(예열 0~10분 → 1차 굽기 10분 시작)는 기대값이 바뀌는 것이 맞다.
         [Fact]
-        public async Task Schedule_RoastChicken_PrepHappensWhileOvenPreheats()
+        public async Task Schedule_RoastChicken_PrepRunsInParallel_WithoutPreheatStep()
         {
             var (total, sequential, t) = await Schedule(3);   // 로스트치킨
 
-            Assert.Equal(0, t[10].start);           // 오븐 예열 0~10분
-            Assert.True(t[14].end <= 10);           // 허브버터는 예열하는 동안 끝남
-            Assert.Equal(10, t[15].start);          // 1차 굽기는 예열이 끝난 10분에 시작
-            Assert.True(t[18].end <= t[17].end);    // 버터 소스는 굽는 동안 따로 준비
+            Assert.False(t.ContainsKey(10));                              // 사람이 넣던 예열 단계는 없다
+            Assert.Equal(Math.Max(t[12].end, t[14].end), t[15].start);    // 1차 굽기는 닭 준비·허브버터가 끝나면 시작
+            Assert.True(t[18].end <= t[17].end);                          // 버터 소스는 굽는 동안 따로 준비
             Assert.True(total < sequential);
+        }
+
+        // T10: 의존관계 시뮬레이션(POST /simulate)에는 오븐 예열이 자동으로 들어간다
+        [Fact]
+        public async Task Simulate_RoastChicken_AddsOvenPreheatAutomatically()
+        {
+            var result = await _controller.SimulateRecipe(3);   // 로스트치킨
+
+            var timeline = Assert.IsType<List<TimelineEntry>>(Assert.IsType<OkObjectResult>(result).Value);
+            var preheats = timeline.Where(e => e.IsPreheat).ToList();
+            var bake1 = timeline.Single(e => e.StepId == 15 && !e.IsPreheat);   // 1차 굽기 200°C
+            var finish = timeline.Single(e => e.StepId == 19 && !e.IsPreheat);  // 마무리 굽기 230°C
+
+            Assert.Equal(2, preheats.Count);   // 처음 200°C(10분) + 230°C로 올릴 때(30°C → 2분). 같은 200°C 단계와 휴지는 예열 없음
+            Assert.Equal((bake1.StartMin - 10, bake1.StartMin), preheats.Where(p => p.StepId == 15).Select(p => (p.StartMin, p.EndMin)).Single());
+            Assert.Equal((finish.StartMin - 2, finish.StartMin), preheats.Where(p => p.StepId == 19).Select(p => (p.StartMin, p.EndMin)).Single());
         }
 
         [Fact]
@@ -304,13 +322,15 @@ namespace KitchenFlow.Api.Tests
         {
             var root = await Combined(2, 3);   // 야채볶음 + 로스트치킨
 
-            Assert.Equal(87, root.GetProperty("ServeMinute").GetInt32());
-            Assert.Equal(114, root.GetProperty("SequentialMinutes").GetInt32());
+            // T10: 시드의 "오븐 예열"(10분) 단계를 없앴고, 여러 요리 합친 스케줄(T4 RecipeScheduler)은 예열을 반영하지 않는다 (DP4 결정 2).
+            //      → 순차 합계 114 → 104분(예열 10분 빠짐), 로스트치킨 완성 87 → 85분(예열 대기 없이 손질 끝나면 굽기 시작)
+            Assert.Equal(85, root.GetProperty("ServeMinute").GetInt32());
+            Assert.Equal(104, root.GetProperty("SequentialMinutes").GetInt32());
 
             var dishes = root.GetProperty("Dishes").EnumerateArray()
                 .ToDictionary(d => d.GetProperty("RecipeId").GetInt32());
             Assert.Equal(11, dishes[2].GetProperty("FinishMinute").GetInt32());
-            Assert.Equal(76, dishes[2].GetProperty("WaitBeforeServe").GetInt32());
+            Assert.Equal(74, dishes[2].GetProperty("WaitBeforeServe").GetInt32());
             Assert.Equal(0, dishes[3].GetProperty("WaitBeforeServe").GetInt32());
         }
 

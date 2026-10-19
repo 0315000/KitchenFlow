@@ -359,6 +359,12 @@ namespace KitchenFlow.Api.Controllers
             }
 
             // ① DB → 계산 함수 입력으로 옮겨 담기
+            //    T10: 오븐(예열이 필요한 기계)인지와 단계 온도를 같이 넘겨서 예열이 들어가게 한다
+            var preheatMachineIds = await _context.Machines
+                .Where(m => m.Kind == RecipeSimulator.PreheatMachineKind)
+                .Select(m => m.Id)
+                .ToListAsync();
+
             var steps = await _context.Steps
                 .Where(s => s.RecipeId == id)
                 .Select(s => new SimulationStep(
@@ -366,7 +372,9 @@ namespace KitchenFlow.Api.Controllers
                     s.Id,
                     s.Order,
                     s.DurationMinutes,
-                    s.DependsOn.Select(d => d.DependsOnStepId).ToList()))   // 선행 단계 Id 목록
+                    s.DependsOn.Select(d => d.DependsOnStepId).ToList(),   // 선행 단계 Id 목록
+                    s.TempC,
+                    preheatMachineIds.Contains(s.MachineId)))
                 .ToListAsync();
 
             // ② 계산은 순수 함수에게

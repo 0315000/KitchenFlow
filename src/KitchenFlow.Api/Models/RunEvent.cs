@@ -15,5 +15,8 @@ namespace KitchenFlow.Api.Models
 
         public int StartMin { get; set; }   // 실행 시작 후 몇 분에 시작했는지
         public int EndMin { get; set; }     // 실행 시작 후 몇 분에 끝났는지
+
+        // T10: StepId 단계를 위한 오븐 예열 구간이면 true. 예열 규칙 전에 저장된 기록은 false(예열 없음)로 남는다
+        public bool IsPreheat { get; set; }
     }
 }

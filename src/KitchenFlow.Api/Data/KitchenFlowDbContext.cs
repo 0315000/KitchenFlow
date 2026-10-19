@@ -189,9 +189,10 @@ namespace KitchenFlow.Api.Data
                 new StepInput { StepId = 6, IngredientId = 6, Quantity = 20 }     // 식용유
             );
 
-            // 로스트치킨 12단계 : 오븐(1)을 6번 사용 → T8 기계 경합, 예열 → T10 인수 시나리오
+            // 로스트치킨 11단계 : 오븐(1)을 5번 사용 → T8 기계 경합
+            // T10: 사람이 넣던 "오븐 예열"(Id 10) 단계는 없앴다 → 시뮬레이터가 오븐 단계 앞에 자동으로 넣는다.
+            //      (Order 는 2부터 시작한다. 이미 편집된 DB의 단계 순서를 건드리지 않으려고 번호는 다시 매기지 않았다)
             modelBuilder.Entity<Step>().HasData(
-                new Step { Id = 10, RecipeId = 3, Order = 1,  MachineId = 1, Action = "오븐 예열",        DurationMinutes = 10, TempC = 200 },
                 new Step { Id = 11, RecipeId = 3, Order = 2,  MachineId = 3, Action = "닭 꺼내기",        DurationMinutes = 1,  TempC = 4 },
                 new Step { Id = 12, RecipeId = 3, Order = 3,  MachineId = 5, Action = "닭 무게 재기",     DurationMinutes = 1 },
                 new Step { Id = 13, RecipeId = 3, Order = 4,  MachineId = 5, Action = "양념 계량",        DurationMinutes = 2 },
@@ -229,12 +230,11 @@ namespace KitchenFlow.Api.Data
                 new StepDependency { StepId = 8,  DependsOnStepId = 7 },
                 new StepDependency { StepId = 9,  DependsOnStepId = 8 },
 
-                // 로스트치킨: 오븐 예열(10) · 닭 준비(11→12) · 허브버터(13→14) 를 동시에
+                // 로스트치킨: 닭 준비(11→12) · 허브버터(13→14) 를 동시에 (오븐 예열은 T10부터 자동)
                 //            → 1차 굽기(15) → 뒤집기(16) → 2차 굽기(17)
                 //            버터 소스(18)는 굽는 동안 따로 → 마무리 굽기(19) 에서 합류 → 휴지(20) → 완성(21)
                 new StepDependency { StepId = 12, DependsOnStepId = 11 },
                 new StepDependency { StepId = 14, DependsOnStepId = 13 },
-                new StepDependency { StepId = 15, DependsOnStepId = 10 },
                 new StepDependency { StepId = 15, DependsOnStepId = 12 },
                 new StepDependency { StepId = 15, DependsOnStepId = 14 },
                 new StepDependency { StepId = 16, DependsOnStepId = 15 },

@@ -48,6 +48,7 @@ type TimelineEntry = {
   stepId: number;    // 어느 단계인지 (Step의 Id)
   startMin: number;  // 몇 분에 시작하나
   endMin: number;    // 몇 분에 끝나나
+  isPreheat?: boolean; // T10: stepId 단계를 위한 오븐 예열 구간 (예열 규칙 전 실행 기록에는 없음)
 };
 // T9: 실행 이력 한 줄 (GET /api/recipes/{id}/runs)
 type RunSummary = {
@@ -310,15 +311,17 @@ function RecipeManager() {
       }))
     : [];
   // T8: 스코어 — 총 소요시간 / 기계 유휴율 / 재료 낭비량 → 별 3개
-  const endOfStep = new Map((shown ?? []).map((t) => [t.stepId, t.endMin])); // 단계 Id → 끝 시각
-  // ① 총 소요시간: 순차 실행(모든 단계 시간 합) 대비 얼마나 줄었나
-  const seqTotal = detail ? detail.steps.reduce((sum, s) => sum + s.durationMinutes, 0) : 0;
+  const endOfStep = new Map((shown ?? []).filter((t) => !t.isPreheat).map((t) => [t.stepId, t.endMin])); // 단계 Id → 끝 시각 (예열 막대 제외)
+  // ① 총 소요시간: 순차 실행(모든 단계 시간 합 + T10 예열 시간 합) 대비 얼마나 줄었나
+  const preheatTotal = (shown ?? []).filter((t) => t.isPreheat).reduce((sum, t) => sum + (t.endMin - t.startMin), 0);
+  const seqTotal = detail ? detail.steps.reduce((sum, s) => sum + s.durationMinutes, 0) + preheatTotal : 0;
   const shortenPct = seqTotal > 0 ? Math.round((1 - simTotal / seqTotal) * 100) : 0;
   // ② 기계 유휴율: 쓰는 기계들의 전체 시간 중 놀고 있는 비율
   const busyTotal = (shown ?? []).reduce((sum, t) => sum + (t.endMin - t.startMin), 0);
   const idlePct = lanes.length > 0 && simTotal > 0 ? Math.round((1 - busyTotal / (lanes.length * simTotal)) * 100) : 0;
   // ③ 재료 낭비량: 재료가 들어간 단계가 준비된 뒤 기계를 기다린 시간 합 (손질한 재료가 방치된 시간)
   const wasteMin = (shown ?? []).reduce((sum, t) => {
+    if (t.isPreheat) return sum;                                                  // T10: 예열은 재료를 쓰지 않는다
     const step = detail?.steps.find((s) => s.id === t.stepId);
     if (!step || step.inputs.length === 0) return sum;                            // 재료가 없는 단계는 제외
     const readyAt = Math.max(0, ...step.dependsOn.map((d) => endOfStep.get(d) ?? 0)); // 선행이 다 끝난 시각
@@ -492,7 +495,7 @@ function RecipeManager() {
 
           {schedule && schedule.steps.length > 0 && (
             <div style={{ margin: "24px 0", textAlign: "left" }}>
-              <h3 style={{ textAlign: "center" }}>조리 흐름 — 동시에 진행해서 한 요리로 완성</h3>
+              <h3 style={{ textAlign: "center" }}>조리 흐름 — 동시에 진행해서 한 요리로 완성 (예열 미반영)</h3>
               <p style={{ textAlign: "center" }}>
                 동시에 진행하면 <b>{schedule.totalMinutes}분</b> 만에 완성
                 {schedule.sequentialMinutes > schedule.totalMinutes && (
@@ -625,16 +628,22 @@ function RecipeManager() {
                       <div style={{ position: "relative", height: 22, width: simTotal * simPx, flexShrink: 0, background: "#eee", borderRadius: 3 }}>
                         {lane.entries.map((t) => {
                           const step = detail.steps.find((s) => s.id === t.stepId);
+                          // T10: 예열 막대는 굽기와 구분되게 빗금 + "예열" 이름 (같은 stepId 의 굽기 바로 앞)
+                          const label = t.isPreheat ? "예열" : step?.action;
                           return (
                             <div
-                              key={t.stepId}
-                              title={`${step?.order}. ${step?.action} · ${t.startMin}~${t.endMin}분`}
+                              key={`${t.stepId}-${t.isPreheat ? "preheat" : "step"}`}
+                              title={t.isPreheat
+                                ? `예열 (${step?.order}. ${step?.action} ${step?.tempC ?? ""}°C 준비) · ${t.startMin}~${t.endMin}분`
+                                : `${step?.order}. ${step?.action} · ${t.startMin}~${t.endMin}분`}
                               style={{
                                 position: "absolute",
                                 left: t.startMin * simPx,
                                 width: (t.endMin - t.startMin) * simPx,
                                 height: "100%",
-                                background: colorOf(t.machineId),
+                                background: t.isPreheat
+                                  ? `repeating-linear-gradient(45deg, ${colorOf(t.machineId)}, ${colorOf(t.machineId)} 4px, #f6b26b 4px, #f6b26b 8px)`
+                                  : colorOf(t.machineId),
                                 border: "1px solid white",
                                 boxSizing: "border-box",
                                 borderRadius: 3,
@@ -646,7 +655,7 @@ function RecipeManager() {
                                 paddingLeft: 3,
                               }}
                             >
-                              {step?.action}
+                              {label}
                             </div>
                           );
                         })}
